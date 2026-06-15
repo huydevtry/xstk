@@ -32,3 +32,5 @@ env/
 Thumbs.db
 .vscode/
 .idea/
+
+credentials.json

@@ -32,8 +32,14 @@ Mục đích: Học tập và thử nghiệm kiến trúc realtime, bất đồn
 
 ## 4. Lược đồ Database (Database Schema Reference)
 - `users`: id (UUID), email (String, unique), total_points (Int), created_at (DateTime).
-- `matches`: id (Int), home_team (String), away_team (String), home_score (Int), away_score (Int), status (Enum: upcoming, live, finished), start_time (DateTime).
-- `bets`: id (Int), user_id (UUID - FK), match_id (Int - FK), predicted_home (Int), predicted_away (Int), points_earned (Int), created_at (DateTime).
+- `matches`: id (Int), home_team (String), away_team (String), home_score (Int), away_score (Int), handicap (Float, default=0.0), status (Enum: upcoming, live, finished), start_time (DateTime).
+- `bets`: id (Int), user_id (UUID - FK), match_id (Int - FK), choice (String: HOME/DRAW/AWAY), stake (Int), points_earned (Int), created_at (DateTime).
+
+## 5. Cơ chế đặt cược (Betting Engine)
+- **Pool/Pari-mutuel**: Multiplier = total_pool / stakes_on_winning_choice. Reward = floor(stake * multiplier).
+- **Handicap**: Adjusted home score = home_score + handicap. Quyết định HOME/DRAW/AWAY.
+- **Refund**: Nếu winning_choice không có ai cược, hoàn trả stake cho tất cả người tham gia trận đó.
+- **Giới hạn**: 1 user chỉ được cược 1 lần/trận. Match phải status=upcoming.
 
 ## 5. Style Coder
 - Viết code ngắn gọn, tối ưu, ưu tiên performance.
