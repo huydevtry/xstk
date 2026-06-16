@@ -51,6 +51,7 @@ async function fetchUserProfile() {
         if (!res.ok) throw new Error();
         currentUser = await res.json();
         renderUserInfo();
+        fetchUpcomingMatches();
     } catch {
         el.innerHTML = `<span class="text-red-400 font-medium">Lỗi kết nối Auth</span>`;
     }
@@ -61,6 +62,9 @@ function renderUserInfo() {
     if (!currentUser) return;
     const shortEmail = currentUser.email.split("@")[0];
     el.innerHTML = `👤 <span class="font-semibold text-white">${escapeHtml(shortEmail)}</span> | 🪙 <span class="text-yellow-400 font-bold" id="user-points">${currentUser.total_points.toLocaleString()}</span>đ`;
+
+    document.getElementById("admin-header-link")?.classList.toggle("hidden", !currentUser.is_admin);
+    document.getElementById("admin-nav-link")?.classList.toggle("hidden", !currentUser.is_admin);
 }
 
 function updateDisplayedPoints(newTotal) {
@@ -142,33 +146,34 @@ function renderMatchCard(match) {
         ? `<span class="${hcClass}">(${hcSign}${handicap})</span>`
         : "";
 
-    // Multipliers
-    const mHome  = calcMultiplier(total_pool, stakes_home);
-    const mDraw  = calcMultiplier(total_pool, stakes_draw);
-    const mAway  = calcMultiplier(total_pool, stakes_away);
+    // Ước tính thưởng theo mức cược mặc định
+    const referenceStake = currentUser ? Math.min(50, currentUser.total_points) : 50;
+    const homeReward = estimateReward(total_pool, stakes_home, referenceStake);
+    const drawReward = estimateReward(total_pool, stakes_draw, referenceStake);
+    const awayReward = estimateReward(total_pool, stakes_away, referenceStake);
 
     const betArea = placedBets.has(id)
         ? `<div class="bet-placed-badge">✅ Đã đặt cược cho trận này</div>`
         : `
             <div class="bet-btn-group" id="btn-group-${id}">
                 <div class="bet-choice-block">
-                    <button class="bet-btn w-full" id="bet-home-${id}" onclick="selectChoice(${id}, 'HOME', ${mHome}, ${total_pool}, ${stakes_home})">
+                    <button class="bet-btn w-full" id="bet-home-${id}" onclick="selectChoice(${id}, 'HOME', ${total_pool}, ${stakes_home})">
                         <span class="bet-label">Nhà</span>
-                        <span class="bet-odds" id="odds-home-${id}">x${mHome.toFixed(2)}</span>
+                        <span class="bet-payout" id="reward-home-${id}">~${homeReward.toLocaleString()}đ</span>
                     </button>
                     <div class="avatar-stack-row" id="avatars-home-${id}"></div>
                 </div>
                 <div class="bet-choice-block">
-                    <button class="bet-btn w-full" id="bet-draw-${id}" onclick="selectChoice(${id}, 'DRAW', ${mDraw}, ${total_pool}, ${stakes_draw})">
+                    <button class="bet-btn w-full" id="bet-draw-${id}" onclick="selectChoice(${id}, 'DRAW', ${total_pool}, ${stakes_draw})">
                         <span class="bet-label">Hòa</span>
-                        <span class="bet-odds" id="odds-draw-${id}">x${mDraw.toFixed(2)}</span>
+                        <span class="bet-payout" id="reward-draw-${id}">~${drawReward.toLocaleString()}đ</span>
                     </button>
                     <div class="avatar-stack-row" id="avatars-draw-${id}"></div>
                 </div>
                 <div class="bet-choice-block">
-                    <button class="bet-btn w-full" id="bet-away-${id}" onclick="selectChoice(${id}, 'AWAY', ${mAway}, ${total_pool}, ${stakes_away})">
+                    <button class="bet-btn w-full" id="bet-away-${id}" onclick="selectChoice(${id}, 'AWAY', ${total_pool}, ${stakes_away})">
                         <span class="bet-label">Khách</span>
-                        <span class="bet-odds" id="odds-away-${id}">x${mAway.toFixed(2)}</span>
+                        <span class="bet-payout" id="reward-away-${id}">~${awayReward.toLocaleString()}đ</span>
                     </button>
                     <div class="avatar-stack-row" id="avatars-away-${id}"></div>
                 </div>
@@ -256,18 +261,21 @@ function renderAvatarStack(container, bettors) {
 }
 
 
-// ─── 5. Tính multiplier ───────────────────────────────────────────────────────
-function calcMultiplier(pool, stakes) {
-    if (!stakes || stakes === 0) return pool > 0 ? pool : 2.0;
-    return pool / stakes;
+// ─── 5. Tính điểm thưởng dự kiến ───────────────────────────────────────────────
+function estimateReward(totalPool, choicePool, stake) {
+    const pool = Math.max(0, Number(totalPool) || 0);
+    const choice = Math.max(0, Number(choicePool) || 0);
+    const bet = Math.max(0, Number(stake) || 0);
+    if (bet <= 0) return 0;
+    return Math.floor(((pool + bet) * bet) / (choice + bet));
 }
 
 
 // ─── 6. Chọn lựa (HOME / DRAW / AWAY) ────────────────────────────────────────
-const matchSelections = {};  // { matchId: { choice, multiplier } }
+const matchSelections = {};  // { matchId: { choice, totalPool, stakesOnChoice } }
 
-window.selectChoice = function(matchId, choice, multiplier, totalPool, stakesOnChoice) {
-    matchSelections[matchId] = { choice, multiplier };
+window.selectChoice = function(matchId, choice, totalPool, stakesOnChoice) {
+    matchSelections[matchId] = { choice, totalPool, stakesOnChoice };
 
     // Highlight button được chọn
     ["HOME", "DRAW", "AWAY"].forEach(c => {
@@ -276,15 +284,16 @@ window.selectChoice = function(matchId, choice, multiplier, totalPool, stakesOnC
     });
 
     // Render stake panel
-    renderStakePanel(matchId, choice, multiplier);
+    renderStakePanel(matchId, choice, totalPool, stakesOnChoice);
 };
 
 
 // ─── 7. Stake Panel ───────────────────────────────────────────────────────────
-function renderStakePanel(matchId, choice, multiplier) {
+function renderStakePanel(matchId, choice, totalPool, stakesOnChoice) {
     const panel = document.getElementById(`stake-panel-${matchId}`);
     const maxStake = currentUser ? currentUser.total_points : 1000;
     const defaultStake = Math.min(50, maxStake);
+    const defaultReward = estimateReward(totalPool, stakesOnChoice, defaultStake);
 
     panel.classList.remove("hidden");
     panel.innerHTML = `
@@ -294,14 +303,14 @@ function renderStakePanel(matchId, choice, multiplier) {
                 <input type="range" class="stake-slider flex-1"
                     id="slider-${matchId}"
                     min="10" max="${maxStake}" step="10" value="${defaultStake}"
-                    oninput="syncStake(${matchId}, ${multiplier}, this.value)">
+                    oninput="syncStake(${matchId}, ${totalPool}, ${stakesOnChoice}, this.value)">
                 <input type="number" class="stake-input"
                     id="input-${matchId}"
                     min="10" max="${maxStake}" step="10" value="${defaultStake}"
-                    oninput="syncStake(${matchId}, ${multiplier}, this.value)">
+                    oninput="syncStake(${matchId}, ${totalPool}, ${stakesOnChoice}, this.value)">
             </div>
             <div class="est-return" id="est-${matchId}">
-                Ước tính nhận: <strong>${Math.floor(defaultStake * multiplier).toLocaleString()} điểm</strong>
+                Ước tính nhận: <strong>${defaultReward.toLocaleString()} điểm</strong>
             </div>
             <button class="confirm-bet-btn" id="confirm-btn-${matchId}"
                     onclick="confirmBet(${matchId})">
@@ -310,11 +319,11 @@ function renderStakePanel(matchId, choice, multiplier) {
         </div>`;
 }
 
-window.syncStake = function(matchId, multiplier, rawVal) {
+window.syncStake = function(matchId, totalPool, stakesOnChoice, rawVal) {
     const val = Math.max(10, Math.min(parseInt(rawVal) || 10, currentUser ? currentUser.total_points : 9999));
     document.getElementById(`slider-${matchId}`).value = val;
     document.getElementById(`input-${matchId}`).value = val;
-    const est = Math.floor(val * multiplier);
+    const est = estimateReward(totalPool, stakesOnChoice, val);
     document.getElementById(`est-${matchId}`).innerHTML =
         `Ước tính nhận: <strong>${est.toLocaleString()} điểm</strong>`;
 };

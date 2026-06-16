@@ -14,10 +14,13 @@ import logging
 import random
 import uuid as uuid_lib
 from pathlib import Path
+import csv
+import io
+from decimal import Decimal, ROUND_DOWN
 
 from app.database import engine, Base, get_db
 from app.models import Match, MatchStatus, Bet, User
-from app.dependencies import get_current_user, get_admin_user
+from app.dependencies import get_current_user, get_admin_user, ADMIN_EMAILS
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +159,7 @@ async def get_me(user: User = Depends(get_current_user)):
     base_name = user.email.split("@")[0]
     display_name = user.display_name or base_name
     initials = (display_name[:2]).upper()
+    is_admin = user.email.strip().lower() in ADMIN_EMAILS
     return {
         "email": user.email,
         "display_name": display_name,
@@ -163,6 +167,7 @@ async def get_me(user: User = Depends(get_current_user)):
         "avatar_url": user.avatar_url,
         "avatar_color": user.avatar_color or "#6366f1",
         "initials": initials,
+        "is_admin": is_admin,
     }
 
 
@@ -666,6 +671,159 @@ async def create_match(
     return {"message": "Đã thêm trận đấu.", "match": _match_response(match)}
 
 
+def _clean_csv_value(row: dict, key: str, default: str = "") -> str:
+    value = row.get(key, default)
+    if value is None:
+        return default
+    return str(value).strip()
+
+
+def _parse_csv_datetime(value: str) -> datetime:
+    value = value.strip()
+    if not value:
+        raise ValueError("start_time is required")
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        pass
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M"):
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    raise ValueError("Invalid start_time format")
+
+
+def _parse_optional_int(value: str, default: int = 0) -> int:
+    if value == "":
+        return default
+    return int(float(value))
+
+
+def _parse_optional_float(value: str, default: float = 0.0) -> float:
+    if value == "":
+        return default
+    return float(value)
+
+
+@app.post("/api/v1/admin/matches/import-csv")
+async def import_matches_csv(
+    file: UploadFile = File(...),
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    filename = (file.filename or "").lower()
+    if not filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Chỉ chấp nhận file CSV.")
+
+    contents = await file.read()
+    if len(contents) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File CSV tối đa 2MB.")
+
+    try:
+        text = contents.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="File CSV cần dùng mã hóa UTF-8.")
+
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise HTTPException(status_code=400, detail="File CSV không có header.")
+
+    imported = 0
+    created = 0
+    updated = 0
+    errors = []
+
+    try:
+        for line_no, row in enumerate(reader, start=2):
+            if not any(str(v or "").strip() for v in row.values()):
+                continue
+
+            try:
+                home_team = _clean_csv_value(row, "home_team")
+                away_team = _clean_csv_value(row, "away_team")
+                if not home_team or not away_team:
+                    raise ValueError("home_team and away_team are required")
+
+                status_value = _clean_csv_value(row, "status", MatchStatus.upcoming.value) or MatchStatus.upcoming.value
+                status = MatchStatus(status_value)
+                if status == MatchStatus.finished:
+                    raise ValueError("Use resolve match flow instead of importing finished status")
+                start_time = _parse_csv_datetime(
+                    _clean_csv_value(row, "start_time") or _clean_csv_value(row, "start_time_ict")
+                )
+                home_score = _parse_optional_int(_clean_csv_value(row, "home_score"), 0)
+                away_score = _parse_optional_int(_clean_csv_value(row, "away_score"), 0)
+                handicap = _parse_optional_float(_clean_csv_value(row, "handicap"), 0.0)
+                home_icon = _clean_csv_value(row, "home_icon") or None
+                away_icon = _clean_csv_value(row, "away_icon") or None
+                raw_id = _clean_csv_value(row, "id")
+
+                match = None
+                if raw_id:
+                    match = (
+                        await db.execute(select(Match).where(Match.id == int(raw_id)))
+                    ).scalars().first()
+
+                if match:
+                    match.home_team = home_team
+                    match.away_team = away_team
+                    match.home_icon = home_icon
+                    match.away_icon = away_icon
+                    match.home_score = home_score
+                    match.away_score = away_score
+                    match.handicap = handicap
+                    match.status = status
+                    match.start_time = start_time
+                    updated += 1
+                else:
+                    match_kwargs = {
+                        "home_team": home_team,
+                        "away_team": away_team,
+                        "home_icon": home_icon,
+                        "away_icon": away_icon,
+                        "home_score": home_score,
+                        "away_score": away_score,
+                        "handicap": handicap,
+                        "status": status,
+                        "start_time": start_time,
+                    }
+                    if raw_id:
+                        match_kwargs["id"] = int(raw_id)
+                    match = Match(**match_kwargs)
+                    created += 1
+
+                db.add(match)
+                imported += 1
+            except Exception as e:
+                errors.append({"line": line_no, "error": str(e)})
+                if len(errors) >= 10:
+                    break
+
+        if errors:
+            await db.rollback()
+            return {
+                "message": "Import thất bại. Chưa có trận nào được lưu.",
+                "imported": 0,
+                "created": 0,
+                "updated": 0,
+                "errors": errors,
+            }
+
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {
+        "message": f"Đã import {imported} trận đấu.",
+        "imported": imported,
+        "created": created,
+        "updated": updated,
+        "errors": [],
+    }
+
+
 # POST /api/v1/admin/matches/{match_id}/update — Cập nhật thông tin trận
 @app.post("/api/v1/admin/matches/{match_id}/update")
 async def update_match(
@@ -782,22 +940,34 @@ async def resolve_match(
                     user_q.total_points += bet.stake
                     db.add(user_q)
         else:
-            # Multiplier = total_pool / stakes_on_winner
-            multiplier = total_pool / stakes_on_winner
             for bet in bets:
                 bet.points_earned = 0
                 db.add(bet)
 
+            allocations = []
+            total_allocated = 0
+            pool_decimal = Decimal(total_pool)
+            winner_decimal = Decimal(stakes_on_winner)
+
             for bet in winning_bets:
-                reward = int(bet.stake * multiplier)  # Math.floor equivalent
-                bet.points_earned = reward
+                exact_reward = (pool_decimal * Decimal(bet.stake)) / winner_decimal
+                reward = int(exact_reward.to_integral_value(rounding=ROUND_DOWN))
+                allocations.append((bet, reward, exact_reward - Decimal(reward)))
+                total_allocated += reward
+
+            remainder = total_pool - total_allocated
+            allocations.sort(key=lambda item: (-item[2], -item[0].stake, item[0].id))
+
+            for index, (bet, reward, _) in enumerate(allocations):
+                final_reward = reward + (1 if index < remainder else 0)
+                bet.points_earned = final_reward
                 db.add(bet)
 
                 user_q = (await db.execute(
                     select(User).where(User.id == bet.user_id)
                 )).scalars().first()
                 if user_q:
-                    user_q.total_points += reward
+                    user_q.total_points += final_reward
                     db.add(user_q)
 
         match.status = MatchStatus.finished

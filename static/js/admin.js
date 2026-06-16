@@ -4,6 +4,7 @@ document.addEventListener("DOMContentLoaded", () => {
     fetchMe();
     fetchMatches();
     document.getElementById("match-form").addEventListener("submit", saveMatch);
+    document.getElementById("csv-import-form").addEventListener("submit", importMatchesCsv);
 });
 
 function escapeHtml(value) {
@@ -161,6 +162,60 @@ async function saveMatch(event) {
     } catch (err) {
         console.error(err);
         alert("Đã xảy ra lỗi hệ thống.");
+    } finally {
+        btn.disabled = false;
+        btn.innerText = oldText;
+    }
+}
+
+function showCsvImportResult(message, type = "success", errors = []) {
+    const el = document.getElementById("csv-import-result");
+    const errorHtml = errors.length
+        ? `<ul class="mt-2 list-disc list-inside text-xs">${errors.map(err => `<li>Dòng ${escapeHtml(err.line)}: ${escapeHtml(err.error)}</li>`).join("")}</ul>`
+        : "";
+    el.className = `mt-3 text-sm rounded-lg border px-3 py-2 ${
+        type === "success"
+            ? "bg-emerald-950/50 border-emerald-800 text-emerald-200"
+            : "bg-red-950/50 border-red-800 text-red-200"
+    }`;
+    el.innerHTML = `${escapeHtml(message)}${errorHtml}`;
+}
+
+async function importMatchesCsv(event) {
+    event.preventDefault();
+    const fileInput = document.getElementById("csv-file");
+    const btn = document.getElementById("csv-import-btn");
+    const file = fileInput.files && fileInput.files[0];
+
+    if (!file) {
+        showCsvImportResult("Vui lòng chọn file CSV.", "error");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    btn.disabled = true;
+    const oldText = btn.innerText;
+    btn.innerText = "Đang import...";
+
+    try {
+        const res = await fetch("/api/v1/admin/matches/import-csv", {
+            method: "POST",
+            body: formData,
+        });
+        const data = await res.json();
+        if (res.ok && !data.errors?.length) {
+            showCsvImportResult(`${data.message} Tạo mới: ${data.created}, cập nhật: ${data.updated}.`, "success");
+            fileInput.value = "";
+            resetMatchForm();
+            await fetchMatches();
+        } else {
+            showCsvImportResult(data.message || data.detail || "Import CSV thất bại.", "error", data.errors || []);
+        }
+    } catch (err) {
+        console.error(err);
+        showCsvImportResult("Đã xảy ra lỗi hệ thống khi import CSV.", "error");
     } finally {
         btn.disabled = false;
         btn.innerText = oldText;
