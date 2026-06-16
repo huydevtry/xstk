@@ -28,6 +28,14 @@ app = FastAPI(title="Xác Suất & Thống Kê - Betting Engine")
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+ASSET_VERSION = str(
+    max(
+        int(Path("static/css/style.css").stat().st_mtime),
+        int(Path("static/js/app.js").stat().st_mtime),
+        int(Path("static/js/admin.js").stat().st_mtime),
+        int(Path("static/js/profile.js").stat().st_mtime),
+    )
+)
 
 
 NO_CACHE_HEADERS = {
@@ -150,16 +158,28 @@ class MatchPayload(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def read_home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request}, headers=NO_CACHE_HEADERS)
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "asset_version": ASSET_VERSION},
+        headers=NO_CACHE_HEADERS,
+    )
 
 @app.get("/admin", response_class=HTMLResponse)
 async def read_admin(request: Request, admin_user: User = Depends(get_admin_user)):
-    return templates.TemplateResponse("admin.html", {"request": request}, headers=NO_CACHE_HEADERS)
+    return templates.TemplateResponse(
+        "admin.html",
+        {"request": request, "asset_version": ASSET_VERSION},
+        headers=NO_CACHE_HEADERS,
+    )
 
 
 @app.get("/profile", response_class=HTMLResponse)
 async def read_profile(request: Request, user: User = Depends(get_current_user)):
-    return templates.TemplateResponse("profile.html", {"request": request}, headers=NO_CACHE_HEADERS)
+    return templates.TemplateResponse(
+        "profile.html",
+        {"request": request, "asset_version": ASSET_VERSION},
+        headers=NO_CACHE_HEADERS,
+    )
 
 
 @app.get("/api/v1/me")
