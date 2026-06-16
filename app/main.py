@@ -730,7 +730,11 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
         leaderboard.append({
             "rank": rank,
             "name": _user_display_name(user),
+            "display_name": _user_display_name(user),
             "total_points": user.total_points,
+            "avatar_url": user.avatar_url,
+            "avatar_color": user.avatar_color or "#6366f1",
+            "initials": _user_initials(user),
             "trend": trend,
             "earned_24h": earned_24h,
             "streak_loss": streak_loss,

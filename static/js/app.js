@@ -43,6 +43,16 @@ function formatCoins(value) {
     return `${Number(value || 0).toLocaleString()}d`;
 }
 
+function renderLeaderboardAvatar(entry, className = "lb-avatar") {
+    const avatarSrc = safeImageSrc(entry.avatar_url);
+    const initials = escapeHtml(entry.initials || (String(entry.name ?? "").slice(0, 2).toUpperCase() || "??"));
+    const bg = safeCssColor(entry.avatar_color) || nameToColor(String(entry.name ?? ""));
+    if (avatarSrc) {
+        return `<img src="${avatarSrc}" alt="" class="${className} object-cover border border-slate-200 flex-shrink-0">`;
+    }
+    return `<span class="${className} flex items-center justify-center text-sm font-black text-white flex-shrink-0" style="background:${bg}">${initials}</span>`;
+}
+
 function renderMiniAvatar({ avatar_url, avatar_color, initials }) {
     const avatarSrc = safeImageSrc(avatar_url);
     if (avatarSrc) {
@@ -848,9 +858,7 @@ function renderLeaderboard(data, container) {
             ? `<span class="lb-badge ${BADGE_COLOR_MAP[entry.badge.color] || ""}">${escapeHtml(entry.badge.emoji)} ${escapeHtml(entry.badge.label)}</span>`
             : "";
 
-        const rawName = String(entry.name ?? "");
-        const bg = nameToColor(rawName);
-        const initials = escapeHtml(rawName.slice(0, 2).toUpperCase());
+        const rawName = String(entry.display_name ?? entry.name ?? "");
 
         let trendHtml;
         if (entry.trend === "up") {
@@ -864,7 +872,7 @@ function renderLeaderboard(data, container) {
         return `
         <div class="lb-row">
             ${rankEl}
-            <div class="lb-avatar" style="background:${bg}">${initials}</div>
+            ${renderLeaderboardAvatar({ ...entry, name: rawName })}
             <div class="lb-info">
                 <div class="lb-name">
                     <span>${escapeHtml(rawName)}</span>
