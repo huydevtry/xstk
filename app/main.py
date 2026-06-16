@@ -488,8 +488,7 @@ async def get_match_bets(match_id: int, db: AsyncSession = Depends(get_db)):
         is_lone_wolf = my_count == 1 and other_max >= 3
 
         entry = {
-            "name": name,
-            "initials": initials,
+            **_user_avatar_payload(r.User),
             "stake": r.Bet.stake,
             "is_lone_wolf": is_lone_wolf,
         }
@@ -729,6 +728,17 @@ def _user_initials(user: User) -> str:
     return _user_display_name(user)[:2].upper()
 
 
+def _user_avatar_payload(user: User) -> dict:
+    display_name = _user_display_name(user)
+    return {
+        "name": display_name,
+        "display_name": display_name,
+        "avatar_url": user.avatar_url,
+        "avatar_color": user.avatar_color or "#6366f1",
+        "initials": _user_initials(user),
+    }
+
+
 def _stable_pick(options, seed: str) -> str:
     if not options:
         return ""
@@ -910,11 +920,9 @@ async def _build_match_detail_payload(
         elif outcome == "REFUND":
             settlement["refund_count"] += 1
 
-        name = _user_display_name(row.User)
-        initials = _user_initials(row.User)
+        user_payload = _user_avatar_payload(row.User)
         bettors[row.Bet.choice].append({
-            "name": name,
-            "initials": initials,
+            **user_payload,
             "stake": row.Bet.stake,
             "created_at": row.Bet.created_at.isoformat(),
             "is_lone_wolf": summary[row.Bet.choice]["count"] == 1 and max(
@@ -929,7 +937,7 @@ async def _build_match_detail_payload(
                 stake=row.Bet.stake,
                 points_earned=row.Bet.points_earned,
                 winning_choice=winning_choice if is_finished else None,
-                name=name,
+                name=user_payload["name"],
             ),
             "reward_label": _format_reward_label(outcome, row.Bet.stake, row.Bet.points_earned),
             "points_earned": row.Bet.points_earned,

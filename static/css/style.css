@@ -1,21 +1,19 @@
-/* ─── Tối ưu hiệu ứng cuộn mượt mà trên iOS ─── */
+/* Bright, airy theme */
 body {
     -webkit-overflow-scrolling: touch;
-    background-color: #111827;
+    background: linear-gradient(180deg, #f8fbff 0%, #eef6ff 100%);
+    color: #0f172a;
 }
 
-/* ─── Thanh cuộn nhỏ gọn ─── */
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 10px; }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 999px; }
+::-webkit-scrollbar-track { background: #e2e8f0; }
 
-/* ─── Loại bỏ tap highlight trên mobile ─── */
 button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
 
-/* ─── Handicap Badge ─── */
-.handicap-pos { color: #34d399; font-weight: 700; font-size: 0.65rem; }
-.handicap-neg { color: #f87171; font-weight: 700; font-size: 0.65rem; }
+.handicap-pos { color: #059669; font-weight: 700; font-size: 0.65rem; }
+.handicap-neg { color: #ef4444; font-weight: 700; font-size: 0.65rem; }
 
-/* ─── 1x2 Bet Choice Buttons ─── */
 .bet-btn-group {
     display: flex;
     gap: 6px;
@@ -31,35 +29,33 @@ button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
     gap: 2px;
     padding: 8px 4px;
     border-radius: 10px;
-    border: 1.5px solid #374151;
-    background: #1f2937;
-    color: #d1d5db;
+    border: 1.5px solid #cbd5e1;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    color: #1e293b;
     cursor: pointer;
     transition: all 0.15s ease;
-    -webkit-tap-highlight-color: transparent;
     min-height: 56px;
 }
 .bet-btn:active { transform: scale(0.97); }
-.bet-btn .bet-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.bet-btn .bet-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
 .bet-btn .bet-odds,
-.bet-btn .bet-payout { font-size: 0.85rem; font-weight: 800; color: #fbbf24; }
+.bet-btn .bet-payout { font-size: 0.85rem; font-weight: 800; color: #0f766e; }
 
 .bet-btn.selected {
-    border-color: #10b981;
-    background: linear-gradient(135deg, #064e3b 0%, #065f46 100%);
-    color: #fff;
-    box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
+    border-color: #0ea5e9;
+    background: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%);
+    color: #0f172a;
+    box-shadow: 0 0 12px rgba(14, 165, 233, 0.18);
 }
 .bet-btn.selected .bet-odds,
-.bet-btn.selected .bet-payout { color: #6ee7b7; }
+.bet-btn.selected .bet-payout { color: #0284c7; }
 
-/* ─── Stake Panel (slide in) ─── */
 .stake-panel {
     margin-top: 10px;
     padding: 12px;
-    background: #1a2535;
+    background: #ffffff;
     border-radius: 10px;
-    border: 1px solid #2d3f55;
+    border: 1px solid #dbe3ee;
     animation: slideDown 0.2s ease;
 }
 
@@ -70,20 +66,19 @@ button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
 
 .stake-panel label {
     font-size: 0.7rem;
-    color: #9ca3af;
-    font-weight: 600;
+    color: #64748b;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
 
-/* ─── Range Slider ─── */
 .stake-slider {
     -webkit-appearance: none;
     appearance: none;
     width: 100%;
     height: 5px;
     border-radius: 3px;
-    background: #374151;
+    background: #cbd5e1;
     outline: none;
     margin: 8px 0;
     cursor: pointer;
@@ -94,19 +89,18 @@ button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    background: #10b981;
+    background: #0ea5e9;
     cursor: pointer;
-    box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+    box-shadow: 0 0 8px rgba(14, 165, 233, 0.35);
     transition: transform 0.1s;
 }
 .stake-slider::-webkit-slider-thumb:active { transform: scale(1.2); }
 
-/* ─── Stake Input ─── */
 .stake-input {
-    background: #111827;
-    border: 1.5px solid #374151;
+    background: #ffffff;
+    border: 1.5px solid #cbd5e1;
     border-radius: 8px;
-    color: #fff;
+    color: #0f172a;
     font-size: 0.9rem;
     font-weight: 700;
     text-align: center;
@@ -114,24 +108,22 @@ button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
     width: 80px;
     outline: none;
 }
-.stake-input:focus { border-color: #10b981; }
+.stake-input:focus { border-color: #0ea5e9; }
 
-/* ─── Estimated return preview ─── */
 .est-return {
     font-size: 0.75rem;
-    color: #6ee7b7;
-    font-weight: 600;
+    color: #0f766e;
+    font-weight: 700;
     text-align: center;
     margin-top: 6px;
 }
 
-/* ─── Confirm Bet Button ─── */
 .confirm-bet-btn {
     width: 100%;
     padding: 10px;
     margin-top: 10px;
     border-radius: 10px;
-    background: linear-gradient(135deg, #059669, #10b981);
+    background: linear-gradient(135deg, #0ea5e9, #38bdf8);
     color: #fff;
     font-size: 0.85rem;
     font-weight: 800;
@@ -139,17 +131,16 @@ button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
     border: none;
     cursor: pointer;
     transition: all 0.15s;
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    box-shadow: 0 4px 12px rgba(14, 165, 233, 0.25);
 }
 .confirm-bet-btn:active { transform: scale(0.98); opacity: 0.9; }
 .confirm-bet-btn:disabled {
-    background: #374151;
-    color: #6b7280;
+    background: #cbd5e1;
+    color: #64748b;
     cursor: not-allowed;
     box-shadow: none;
 }
 
-/* ─── Bet Already Placed Badge ─── */
 .bet-placed-badge {
     display: flex;
     align-items: center;
@@ -158,14 +149,13 @@ button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
     margin-top: 12px;
     padding: 10px;
     border-radius: 10px;
-    background: #064e3b;
-    border: 1px solid #065f46;
+    background: #ecfeff;
+    border: 1px solid #a5f3fc;
     font-size: 0.8rem;
     font-weight: 700;
-    color: #6ee7b7;
+    color: #155e75;
 }
 
-/* ─── Avatar Stack ─── */
 .avatar-stack-row {
     display: flex;
     align-items: center;
@@ -185,7 +175,7 @@ button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
     width: 26px;
     height: 26px;
     border-radius: 50%;
-    border: 2px solid #1f2937;
+    border: 2px solid #ffffff;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -197,36 +187,44 @@ button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
     cursor: default;
     transition: transform 0.15s ease, z-index 0s;
     flex-shrink: 0;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.25);
+    overflow: hidden;
 }
 
 .avatar-circle:first-child { margin-left: 0; }
 .avatar-circle:hover { transform: translateY(-3px) scale(1.15); z-index: 10; }
 
-/* Lone Wolf: viền vàng rực rỡ */
+.avatar-circle img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    display: block;
+}
+
 .avatar-circle.lone-wolf {
     border-color: #f59e0b;
-    box-shadow: 0 0 0 2px #f59e0b, 0 0 10px rgba(245, 158, 11, 0.6);
+    box-shadow: 0 0 0 2px #f59e0b, 0 0 10px rgba(245, 158, 11, 0.25);
     animation: loneWolfPulse 2s ease-in-out infinite;
 }
 
 @keyframes loneWolfPulse {
-    0%, 100% { box-shadow: 0 0 0 2px #f59e0b, 0 0 10px rgba(245, 158, 11, 0.5); }
-    50%       { box-shadow: 0 0 0 3px #fbbf24, 0 0 18px rgba(251, 191, 36, 0.8); }
+    0%, 100% { box-shadow: 0 0 0 2px #f59e0b, 0 0 10px rgba(245, 158, 11, 0.22); }
+    50%       { box-shadow: 0 0 0 3px #fbbf24, 0 0 18px rgba(251, 191, 36, 0.35); }
 }
 
 .avatar-more {
     width: 26px;
     height: 26px;
     border-radius: 50%;
-    border: 2px solid #374151;
-    background: #374151;
+    border: 2px solid #cbd5e1;
+    background: #e2e8f0;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 0.55rem;
     font-weight: 700;
-    color: #9ca3af;
+    color: #475569;
     margin-left: -8px;
     flex-shrink: 0;
 }
@@ -239,19 +237,17 @@ button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
     flex: 1;
 }
 
-/* ─── Bet Buttons Container khi đã có avatar stack ─── */
 .bet-btn-group-with-avatars {
     display: flex;
     gap: 6px;
     margin-top: 12px;
 }
 
-/* ─── Live Ticker ─── */
 .ticker-wrap {
     overflow: hidden;
     white-space: nowrap;
-    background: linear-gradient(90deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
-    border-bottom: 1px solid #1e293b;
+    background: linear-gradient(90deg, #f8fafc 0%, #eef6ff 50%, #f8fafc 100%);
+    border-bottom: 1px solid #dbeafe;
     padding: 7px 0;
     position: relative;
 }
@@ -266,15 +262,15 @@ button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
     z-index: 2;
     pointer-events: none;
 }
-.ticker-wrap::before { left: 0;  background: linear-gradient(90deg, #0f172a, transparent); }
-.ticker-wrap::after  { right: 0; background: linear-gradient(-90deg, #0f172a, transparent); }
+.ticker-wrap::before { left: 0; background: linear-gradient(90deg, #f8fafc, transparent); }
+.ticker-wrap::after  { right: 0; background: linear-gradient(-90deg, #f8fafc, transparent); }
 
 .ticker-content {
     display: inline-block;
     animation: marquee 40s linear infinite;
     padding-left: 100%;
     font-size: 0.72rem;
-    color: #94a3b8;
+    color: #475569;
     gap: 0;
 }
 
@@ -283,7 +279,7 @@ button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
 .ticker-sep {
     display: inline-block;
     margin: 0 20px;
-    color: #334155;
+    color: #94a3b8;
 }
 
 @keyframes marquee {
@@ -291,7 +287,6 @@ button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
     100% { transform: translateX(-100%); }
 }
 
-/* ─── Leaderboard Section ─── */
 .leaderboard-section {
     margin-top: 24px;
     margin-bottom: 80px;
@@ -305,8 +300,8 @@ button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
 }
 
 .leaderboard-card {
-    background: #1f2937;
-    border: 1px solid #374151;
+    background: #ffffff;
+    border: 1px solid #dbe3ee;
     border-radius: 12px;
     overflow: hidden;
 }
@@ -316,29 +311,29 @@ button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
     align-items: center;
     gap: 10px;
     padding: 10px 12px;
-    border-bottom: 1px solid #1a2535;
+    border-bottom: 1px solid #e2e8f0;
     transition: background 0.15s;
 }
 .lb-row:last-child { border-bottom: none; }
-.lb-row:hover { background: #263348; }
+.lb-row:hover { background: #f8fafc; }
 
 .lb-rank {
     font-size: 0.75rem;
     font-weight: 800;
-    color: #6b7280;
+    color: #94a3b8;
     min-width: 22px;
     text-align: center;
 }
 
 .lb-rank.top1 { color: #f59e0b; font-size: 1rem; }
-.lb-rank.top2 { color: #9ca3af; font-size: 0.9rem; }
-.lb-rank.top3 { color: #cd7c2f; font-size: 0.85rem; }
+.lb-rank.top2 { color: #64748b; font-size: 0.9rem; }
+.lb-rank.top3 { color: #d97706; font-size: 0.85rem; }
 
 .lb-avatar {
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    border: 2px solid #374151;
+    border: 2px solid #e2e8f0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -356,7 +351,7 @@ button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
 .lb-name {
     font-size: 0.8rem;
     font-weight: 700;
-    color: #f1f5f9;
+    color: #0f172a;
     display: flex;
     align-items: center;
     gap: 5px;
@@ -374,10 +369,10 @@ button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
     white-space: nowrap;
 }
 
-.lb-badge-gold   { background: #451a03; color: #fbbf24; border: 1px solid #92400e; }
-.lb-badge-purple { background: #2e1065; color: #c084fc; border: 1px solid #6d28d9; }
-.lb-badge-red    { background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; }
-.lb-badge-gray   { background: #1f2937; color: #9ca3af; border: 1px solid #374151; }
+.lb-badge-gold   { background: #fffbeb; color: #b45309; border: 1px solid #fbbf24; }
+.lb-badge-purple { background: #f5f3ff; color: #7c3aed; border: 1px solid #c4b5fd; }
+.lb-badge-red    { background: #fff1f2; color: #e11d48; border: 1px solid #fecdd3; }
+.lb-badge-gray   { background: #f8fafc; color: #64748b; border: 1px solid #cbd5e1; }
 
 .lb-points {
     display: flex;
@@ -390,7 +385,7 @@ button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
 .lb-score {
     font-size: 0.85rem;
     font-weight: 800;
-    color: #fbbf24;
+    color: #0f766e;
 }
 
 .lb-trend {
@@ -401,9 +396,9 @@ button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
     gap: 2px;
 }
 
-.lb-trend.up   { color: #34d399; }
-.lb-trend.down { color: #f87171; }
-.lb-trend.neutral { color: #4b5563; }
+.lb-trend.up   { color: #0f766e; }
+.lb-trend.down { color: #ef4444; }
+.lb-trend.neutral { color: #94a3b8; }
 
 .trend-arrow-up {
     display: inline-block;

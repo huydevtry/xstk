@@ -41,9 +41,17 @@ function safeCssColor(value) {
 function renderMiniAvatar({ avatar_url, avatar_color, initials }) {
     const avatarSrc = safeImageSrc(avatar_url);
     if (avatarSrc) {
-        return `<img src="${avatarSrc}" alt="" class="w-5 h-5 rounded-full object-cover border border-emerald-400/70 flex-shrink-0">`;
+        return `<img src="${avatarSrc}" alt="" class="w-5 h-5 rounded-full object-cover border border-sky-300 flex-shrink-0">`;
     }
-    return `<span class="w-5 h-5 rounded-full border border-emerald-400/70 flex items-center justify-center text-[9px] font-black text-white flex-shrink-0" style="background:${safeCssColor(avatar_color)}">${escapeHtml(initials || "??")}</span>`;
+    return `<span class="w-5 h-5 rounded-full border border-sky-300 flex items-center justify-center text-[9px] font-black text-white flex-shrink-0" style="background:${safeCssColor(avatar_color)}">${escapeHtml(initials || "??")}</span>`;
+}
+
+function renderBettorAvatar(bettor, className = "w-7 h-7") {
+    const avatarSrc = safeImageSrc(bettor.avatar_url);
+    if (avatarSrc) {
+        return `<img src="${avatarSrc}" alt="" class="${className} rounded-full object-cover border border-slate-200 flex-shrink-0">`;
+    }
+    return `<span class="${className} rounded-full border border-slate-200 flex items-center justify-center text-[11px] font-black text-white flex-shrink-0" style="background:${safeCssColor(bettor.avatar_color)}">${escapeHtml(bettor.initials || "??")}</span>`;
 }
 
 const DETAIL_QUOTES = [
@@ -141,9 +149,9 @@ function renderUserInfo() {
     el.innerHTML = `
         <span class="inline-flex items-center gap-2 max-w-full">
             ${renderMiniAvatar(currentUser)}
-            <span class="font-semibold text-white truncate max-w-[8rem]">${escapeHtml(displayName)}</span>
-            <span class="text-gray-500">|</span>
-            <span class="text-yellow-400 font-bold" id="user-points">${currentUser.total_points.toLocaleString()}</span><span class="text-yellow-400">đ</span>
+            <span class="font-semibold text-slate-900 truncate max-w-[8rem]">${escapeHtml(displayName)}</span>
+            <span class="text-slate-300">|</span>
+            <span class="text-sky-600 font-bold" id="user-points">${currentUser.total_points.toLocaleString()}</span><span class="text-sky-600">đ</span>
         </span>`;
 
     document.getElementById("admin-header-link")?.classList.toggle("hidden", !currentUser.is_admin);
@@ -166,7 +174,7 @@ async function fetchUpcomingMatches() {
         const matches = await res.json();
 
         if (!matches.length) {
-            listEl.innerHTML = `<div class="text-center py-12 text-gray-500 text-sm">Hiện chưa có trận đấu nào sắp diễn ra.</div>`;
+            listEl.innerHTML = `<div class="text-center py-12 text-slate-500 text-sm">Hiện chưa có trận đấu nào sắp diễn ra.</div>`;
             return;
         }
 
@@ -190,9 +198,9 @@ async function fetchUpcomingMatches() {
 
             html += `
                 <div class="mb-4">
-                    <button onclick="toggleGroup('${dateKey}')" class="w-full flex justify-between items-center bg-gray-800/80 p-3 rounded-lg border border-gray-700 focus:outline-none mb-2 active:bg-gray-700">
-                        <span class="font-bold text-emerald-400 text-sm">📅 Ngày ${displayDate} <span class="text-gray-400 text-xs font-normal">(${dateMatches.length} trận)</span></span>
-                        <svg id="icon-${dateKey}" class="w-5 h-5 text-gray-400 transform transition-transform duration-200 ${expanded ? "rotate-180" : ""}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <button onclick="toggleGroup('${dateKey}')" class="w-full flex justify-between items-center bg-white p-3 rounded-lg border border-slate-200 focus:outline-none mb-2 active:bg-sky-50 shadow-sm">
+                        <span class="font-bold text-sky-700 text-sm">📅 Ngày ${displayDate} <span class="text-slate-500 text-xs font-normal">(${dateMatches.length} trận)</span></span>
+                        <svg id="icon-${dateKey}" class="w-5 h-5 text-slate-400 transform transition-transform duration-200 ${expanded ? "rotate-180" : ""}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                         </svg>
                     </button>
@@ -219,7 +227,7 @@ async function fetchLatestFinishedMatch() {
     try {
         const res = await fetch("/api/v1/matches/latest-finished/detail", NO_CACHE_FETCH_OPTIONS);
         if (res.status === 404) {
-            el.innerHTML = `<div class="rounded-xl border border-gray-700 bg-gray-900/70 p-4 text-sm text-gray-500">Chưa có trận nào hoàn tất gần nhất.</div>`;
+            el.innerHTML = `<div class="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">Chưa có trận nào hoàn tất gần nhất.</div>`;
             return;
         }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -227,7 +235,7 @@ async function fetchLatestFinishedMatch() {
         el.innerHTML = renderLatestFinishedMatch(data);
     } catch (e) {
         console.error(e);
-        el.innerHTML = `<div class="rounded-xl border border-red-800 bg-red-950/40 p-4 text-sm text-red-200">Không tải được trận đã hoàn tất gần nhất.</div>`;
+        el.innerHTML = `<div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">Không tải được trận đã hoàn tất gần nhất.</div>`;
     }
 }
 
@@ -282,15 +290,15 @@ function renderMatchCard(match) {
             </div>
             <div id="stake-panel-${id}" class="hidden"></div>`;
 
-    const homeIconHtml = homeIconSrc ? `<img src="${homeIconSrc}" class="w-6 h-6 inline-block mr-2 rounded-full border border-gray-600 bg-gray-900">` : '';
-    const awayIconHtml = awayIconSrc ? `<img src="${awayIconSrc}" class="w-6 h-6 inline-block ml-2 rounded-full border border-gray-600 bg-gray-900">` : '';
+    const homeIconHtml = homeIconSrc ? `<img src="${homeIconSrc}" class="w-6 h-6 inline-block mr-2 rounded-full border border-slate-200 bg-white">` : '';
+    const awayIconHtml = awayIconSrc ? `<img src="${awayIconSrc}" class="w-6 h-6 inline-block ml-2 rounded-full border border-slate-200 bg-white">` : '';
 
     return `
-        <div class="bg-gray-800 border border-gray-700 hover:border-emerald-500/50 rounded-xl p-4 shadow-sm transition duration-200 mb-3 last:mb-0">
+        <div class="bg-white border border-slate-200 hover:border-sky-300 rounded-xl p-4 shadow-sm transition duration-200 mb-3 last:mb-0">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-xs bg-gray-900 text-emerald-400 font-mono font-semibold px-2 py-1 rounded">⏰ ${timeStr}</span>
+                <span class="text-xs bg-sky-50 text-sky-700 font-mono font-semibold px-2 py-1 rounded border border-sky-100">⏰ ${timeStr}</span>
                 <button type="button"
-                    class="inline-flex items-center gap-1 text-xs bg-gray-900 text-gray-300 border border-gray-700 hover:border-emerald-500 hover:text-emerald-300 px-2.5 py-1 rounded-full transition-colors"
+                    class="inline-flex items-center gap-1 text-xs bg-white text-slate-600 border border-slate-200 hover:border-sky-300 hover:text-sky-700 px-2.5 py-1 rounded-full transition-colors shadow-sm"
                     onclick="openMatchDetail(${id})"
                     title="Xem chi tiết trận">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -303,19 +311,19 @@ function renderMatchCard(match) {
             <div class="flex items-center justify-between my-3 px-2">
                 <div class="w-2/5 text-center flex flex-col items-center">
                     <div class="flex items-center justify-center mb-1">${homeIconHtml}</div>
-                    <p class="text-sm font-bold text-white truncate w-full">${homeTeam} ${hcBadge}</p>
-                    <span class="text-xs text-gray-400 block mt-0.5">Chủ nhà</span>
+                    <p class="text-sm font-bold text-slate-900 truncate w-full">${homeTeam} ${hcBadge}</p>
+                    <span class="text-xs text-slate-500 block mt-0.5">Chủ nhà</span>
                 </div>
-                <div class="w-1/5 text-center text-gray-500 font-black text-sm">VS</div>
+                <div class="w-1/5 text-center text-slate-400 font-black text-sm">VS</div>
                 <div class="w-2/5 text-center flex flex-col items-center">
                     <div class="flex items-center justify-center mb-1">${awayIconHtml}</div>
-                    <p class="text-sm font-bold text-white truncate w-full">${awayTeam}</p>
-                    <span class="text-xs text-gray-400 block mt-0.5">Khách</span>
+                    <p class="text-sm font-bold text-slate-900 truncate w-full">${awayTeam}</p>
+                    <span class="text-xs text-slate-500 block mt-0.5">Khách</span>
                 </div>
             </div>
 
-            <div class="text-center text-xs text-gray-500 mb-1">
-                Pool: <span class="text-yellow-400 font-semibold">${total_pool.toLocaleString()}đ</span>
+            <div class="text-center text-xs text-slate-500 mb-1">
+                Pool: <span class="text-sky-600 font-semibold">${total_pool.toLocaleString()}đ</span>
             </div>
 
             ${betArea}
@@ -352,8 +360,6 @@ function renderAvatarStack(container, bettors) {
     // Build từ phải sang trái (do flex-direction: row-reverse)
     let avatarsHtml = shown.map(b => {
         const rawName = String(b.name ?? "");
-        const bg = nameToColor(rawName);
-        const safeInitials = escapeHtml(b.initials || "??");
         const lwClass = b.is_lone_wolf ? " lone-wolf" : "";
         const lwIcon  = b.is_lone_wolf ? `<span style="position:absolute;top:-7px;right:-3px;font-size:0.6rem;line-height:1">👑</span>` : "";
         const title = escapeHtml(
@@ -361,7 +367,8 @@ function renderAvatarStack(container, bettors) {
                 ? `${rawName} — Kẻ đi ngược đám đông! (${b.stake} đ)`
                 : `${rawName} (${b.stake} đ)`
         );
-        return `<div class="avatar-circle${lwClass}" style="background:${bg}" title="${title}">${lwIcon}${safeInitials}</div>`;
+        const avatar = renderBettorAvatar(b, "w-full h-full");
+        return `<div class="avatar-circle${lwClass}" title="${title}">${lwIcon}${avatar}</div>`;
     }).join("");
 
     if (extra > 0) {
@@ -399,15 +406,15 @@ function renderLatestFinishedMatch(detail) {
         <div class="space-y-4">
             <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div class="min-w-0">
-                    <div class="text-[11px] uppercase tracking-[0.18em] text-gray-500">Trận đã hoàn tất gần nhất</div>
-                    <div class="mt-1 text-lg font-black text-white truncate">${escapeHtml(match.home_team || "Trận đấu")} vs ${escapeHtml(match.away_team || "")}</div>
-                    <div class="mt-1 text-sm text-gray-400">${escapeHtml(scoreText)} · ${escapeHtml(adjustedText)} · ${formatVNDateTime(match.start_time)}</div>
+                    <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500">Trận đã hoàn tất gần nhất</div>
+                    <div class="mt-1 text-lg font-black text-slate-900 truncate">${escapeHtml(match.home_team || "Trận đấu")} vs ${escapeHtml(match.away_team || "")}</div>
+                    <div class="mt-1 text-sm text-slate-500">${escapeHtml(scoreText)} · ${escapeHtml(adjustedText)} · ${formatVNDateTime(match.start_time)}</div>
                 </div>
                 <div class="flex items-center gap-2 flex-wrap justify-end">
-                    <span class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${settlement.refunded ? "border-amber-800/80 bg-amber-950/50 text-amber-200" : "border-emerald-800/80 bg-emerald-950/40 text-emerald-200"}">
+                    <span class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${settlement.refunded ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}">
                         ${escapeHtml(settlement.refunded ? "Hoàn điểm" : `Cửa thắng: ${winnerText}`)}
                     </span>
-                    <button type="button" onclick="openMatchDetail(${match.id}, true)" class="inline-flex items-center gap-2 rounded-full border border-indigo-700 bg-indigo-950/50 px-3 py-1.5 text-xs font-semibold text-indigo-200 hover:bg-indigo-900/60 transition-colors">
+                    <button type="button" onclick="openMatchDetail(${match.id}, true)" class="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-100 transition-colors">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12H3m0 0l4-4m-4 4l4 4m18 0h-6"/>
                         </svg>
@@ -417,15 +424,15 @@ function renderLatestFinishedMatch(detail) {
             </div>
 
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                ${summaryTile("Tổng quỹ", `${totalPool.toLocaleString()}đ`, "text-yellow-400")}
-                ${summaryTile("Người thắng", String(winnerCount), "text-emerald-300")}
-                ${summaryTile("Người thua", String(loserCount), "text-rose-300")}
-                ${summaryTile(settlement.refunded ? "Hoàn điểm" : "Cửa thắng", settlement.refunded ? String(refundCount) : winnerText, "text-sky-300")}
+                ${summaryTile("Tổng quỹ", `${totalPool.toLocaleString()}đ`, "text-amber-600")}
+                ${summaryTile("Người thắng", String(winnerCount), "text-emerald-600")}
+                ${summaryTile("Người thua", String(loserCount), "text-rose-600")}
+                ${summaryTile(settlement.refunded ? "Hoàn điểm" : "Cửa thắng", settlement.refunded ? String(refundCount) : winnerText, "text-sky-600")}
             </div>
 
-            <div class="rounded-xl border border-amber-900/50 bg-amber-950/20 p-4">
-                <div class="text-[11px] uppercase tracking-wide text-amber-300/80">Khịa nhanh</div>
-                <div class="mt-2 text-sm leading-relaxed text-amber-50 italic">${escapeHtml(settlement.headline_quote || getQuoteByDetail(detail))}</div>
+            <div class="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <div class="text-[11px] uppercase tracking-wide text-amber-700">Khịa nhanh</div>
+                <div class="mt-2 text-sm leading-relaxed text-amber-900 italic">${escapeHtml(settlement.headline_quote || getQuoteByDetail(detail))}</div>
             </div>
         </div>`;
 }
@@ -555,7 +562,7 @@ window.openMatchDetail = async function(matchId, forceFresh = false) {
     modal.classList.remove("hidden");
     document.body.style.overflow = "hidden";
     body.innerHTML = `
-        <div class="flex items-center justify-center py-12 text-gray-400">
+        <div class="flex items-center justify-center py-12 text-slate-500">
             <div class="animate-pulse">Đang tải chi tiết trận...</div>
         </div>`;
 
@@ -571,7 +578,7 @@ window.openMatchDetail = async function(matchId, forceFresh = false) {
     } catch (err) {
         console.error(err);
         body.innerHTML = `
-            <div class="rounded-xl border border-red-800 bg-red-950/40 p-4 text-sm text-red-200">
+            <div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
                 Không thể tải chi tiết trận lúc này.
             </div>`;
     }
@@ -614,18 +621,18 @@ function renderMatchDetail(detail) {
 
     body.innerHTML = `
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-            ${summaryTile("Tổng quỹ", `${totalPool.toLocaleString()}đ`, "text-yellow-400")}
-            ${summaryTile("Chủ nhà", `${choiceStats[0].stake.toLocaleString()}đ`, "text-emerald-300")}
-            ${summaryTile("Hòa", `${choiceStats[1].stake.toLocaleString()}đ`, "text-sky-300")}
-            ${summaryTile("Khách", `${choiceStats[2].stake.toLocaleString()}đ`, "text-pink-300")}
+            ${summaryTile("Tổng quỹ", `${totalPool.toLocaleString()}đ`, "text-amber-600")}
+            ${summaryTile("Chủ nhà", `${choiceStats[0].stake.toLocaleString()}đ`, "text-emerald-600")}
+            ${summaryTile("Hòa", `${choiceStats[1].stake.toLocaleString()}đ`, "text-sky-600")}
+            ${summaryTile("Khách", `${choiceStats[2].stake.toLocaleString()}đ`, "text-pink-600")}
         </div>
 
         ${settlement.is_finished ? `
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                ${summaryTile("Kết quả", settlement.score || `${match.home_score ?? 0}-${match.away_score ?? 0}`, "text-white")}
-                ${summaryTile("Sau kèo", settlement.adjusted_score || "--", "text-indigo-300")}
-                ${summaryTile("Người thắng", String(Number(settlement.winner_count || 0)), "text-emerald-300")}
-                ${summaryTile(settlement.refunded ? "Hoàn điểm" : "Cửa thắng", settlement.refunded ? String(Number(settlement.refund_count || 0)) : choiceLabel(settlement.winning_choice), "text-sky-300")}
+                ${summaryTile("Kết quả", settlement.score || `${match.home_score ?? 0}-${match.away_score ?? 0}`, "text-slate-900")}
+                ${summaryTile("Sau kèo", settlement.adjusted_score || "--", "text-indigo-600")}
+                ${summaryTile("Người thắng", String(Number(settlement.winner_count || 0)), "text-emerald-600")}
+                ${summaryTile(settlement.refunded ? "Hoàn điểm" : "Cửa thắng", settlement.refunded ? String(Number(settlement.refund_count || 0)) : choiceLabel(settlement.winning_choice), "text-sky-600")}
             </div>
         ` : ""}
 
@@ -635,27 +642,27 @@ function renderMatchDetail(detail) {
             ${renderChoiceColumn(choiceStats[2], awayPct, settlement)}
         </div>
 
-        <div class="rounded-xl border border-gray-700 bg-gray-900/70 p-4">
+        <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div class="flex items-center justify-between gap-3 mb-3">
                 <div>
-                    <div class="text-xs uppercase tracking-wide text-gray-500">Cửa của bạn</div>
-                    <div class="text-sm font-semibold text-white">${myBet ? choiceLabel(myBet.choice) : "Chưa vào cửa"}</div>
+                    <div class="text-xs uppercase tracking-wide text-slate-500">Cửa của bạn</div>
+                    <div class="text-sm font-semibold text-slate-900">${myBet ? choiceLabel(myBet.choice) : "Chưa vào cửa"}</div>
                 </div>
                 <div class="text-right">
-                    <div class="text-xs text-gray-500">Điểm đã vào</div>
-                    <div class="text-lg font-black text-yellow-400">${myBet ? `${Number(myBet.stake).toLocaleString()}đ` : "0đ"}</div>
-                    ${myBet ? `<div class="text-[11px] text-gray-400">${escapeHtml(myBet.reward_label || myBet.outcome_label || "")}</div>` : ""}
+                    <div class="text-xs text-slate-500">Điểm đã vào</div>
+                    <div class="text-lg font-black text-sky-600">${myBet ? `${Number(myBet.stake).toLocaleString()}đ` : "0đ"}</div>
+                    ${myBet ? `<div class="text-[11px] text-slate-500">${escapeHtml(myBet.reward_label || myBet.outcome_label || "")}</div>` : ""}
                 </div>
             </div>
-            ${myBet ? `<div class="text-xs text-gray-400">${escapeHtml(myBet.quote || "Vào đúng cửa thì uống trà, vào lệch cửa thì ngồi ngẫm đời.")}</div>` : `<div class="text-xs text-gray-400">Chưa đặt cược vẫn xem được quỹ và danh sách để cân nhắc cửa vào.</div>`}
+            ${myBet ? `<div class="text-xs text-slate-500">${escapeHtml(myBet.quote || "Vào đúng cửa thì uống trà, vào lệch cửa thì ngồi ngẫm đời.")}</div>` : `<div class="text-xs text-slate-500">Chưa đặt cược vẫn xem được quỹ và danh sách để cân nhắc cửa vào.</div>`}
         </div>
     `;
 }
 
 function summaryTile(label, value, valueClass) {
     return `
-        <div class="rounded-xl border border-gray-700 bg-gray-900/80 p-3">
-            <div class="text-[11px] uppercase tracking-wide text-gray-500">${escapeHtml(label)}</div>
+        <div class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div class="text-[11px] uppercase tracking-wide text-slate-500">${escapeHtml(label)}</div>
             <div class="mt-1 text-sm font-black ${valueClass}">${escapeHtml(value)}</div>
         </div>`;
 }
@@ -664,22 +671,22 @@ function renderChoiceColumn(choiceStat, pct, settlement) {
     const list = choiceStat.bettors || [];
     const state = getChoiceState(choiceStat.key, settlement);
     return `
-        <section class="rounded-xl border border-gray-700 bg-gray-900/80 p-4 flex flex-col gap-3">
+        <section class="rounded-xl border border-slate-200 bg-white p-4 flex flex-col gap-3 shadow-sm">
             <div class="flex items-center justify-between gap-2">
                 <div>
-                    <div class="text-xs uppercase tracking-wide text-gray-500">${escapeHtml(choiceLabel(choiceStat.key))}</div>
-                    <div class="text-sm font-semibold text-white">${choiceStat.count} người</div>
+                    <div class="text-xs uppercase tracking-wide text-slate-500">${escapeHtml(choiceLabel(choiceStat.key))}</div>
+                    <div class="text-sm font-semibold text-slate-900">${choiceStat.count} người</div>
                 </div>
                 <div class="text-right">
                     <div class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${state.badgeClass}">${escapeHtml(state.label)}</div>
-                    <div class="text-xs text-gray-500">Tỷ trọng</div>
-                    <div class="text-sm font-black text-emerald-300">${pct.toFixed(1)}%</div>
+                    <div class="text-xs text-slate-500">Tỷ trọng</div>
+                    <div class="text-sm font-black text-sky-600">${pct.toFixed(1)}%</div>
                 </div>
             </div>
-            <div class="h-2 rounded-full bg-gray-800 overflow-hidden">
+            <div class="h-2 rounded-full bg-slate-100 overflow-hidden">
                 <div class="h-full rounded-full ${choiceBarClass(choiceStat.key)}" style="width:${Math.max(4, pct)}%"></div>
             </div>
-            <div class="text-xs text-gray-400">
+            <div class="text-xs text-slate-500">
                 ${choiceStat.stake.toLocaleString()}đ trong quỹ
             </div>
             <div class="space-y-2 max-h-56 overflow-y-auto pr-1">
@@ -692,24 +699,24 @@ function getChoiceState(choiceKey, settlement) {
     if (!settlement?.is_finished) {
         return {
             label: "Chờ",
-            badgeClass: "border-gray-700 bg-gray-800/90 text-gray-300",
+            badgeClass: "border-slate-200 bg-slate-50 text-slate-600",
         };
     }
     if (settlement.refunded) {
         return {
             label: "Hoàn điểm",
-            badgeClass: "border-amber-800/80 bg-amber-950/60 text-amber-200",
+            badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
         };
     }
     if (settlement.winning_choice === choiceKey) {
         return {
             label: "Cửa thắng",
-            badgeClass: "border-emerald-800/80 bg-emerald-950/60 text-emerald-200",
+            badgeClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
         };
     }
     return {
         label: "Cửa thua",
-        badgeClass: "border-rose-800/80 bg-rose-950/60 text-rose-200",
+        badgeClass: "border-rose-200 bg-rose-50 text-rose-700",
     };
 }
 
@@ -723,38 +730,35 @@ function choiceBarClass(choice) {
 
 function renderBettorList(list) {
     if (!list.length) {
-        return `<div class="text-xs text-gray-500 italic">Chưa có ai vào cửa này.</div>`;
+        return `<div class="text-xs text-slate-500 italic">Chưa có ai vào cửa này.</div>`;
     }
 
     return list.map(bettor => {
-        const bg = nameToColor(bettor.name || "");
         const title = escapeHtml(
             bettor.is_lone_wolf
                 ? `${bettor.name} - cú đi ngược đám đông (${bettor.stake}đ)`
                 : `${bettor.name} (${bettor.stake}đ)`
         );
         const wolfBadge = bettor.is_lone_wolf
-            ? `<span class="ml-auto text-[10px] font-bold text-amber-400">khác biệt</span>`
+            ? `<span class="ml-auto text-[10px] font-bold text-amber-600">khác biệt</span>`
             : "";
         const outcomeClass = getOutcomeBadgeClass(bettor.outcome);
         const rewardText = escapeHtml(bettor.reward_label || "");
-        const quote = bettor.quote ? `<div class="mt-1 text-[11px] leading-snug italic text-gray-400">${escapeHtml(bettor.quote)}</div>` : "";
+        const quote = bettor.quote ? `<div class="mt-1 text-[11px] leading-snug italic text-slate-500">${escapeHtml(bettor.quote)}</div>` : "";
         return `
-            <div class="flex items-start gap-2 rounded-lg border border-gray-800 bg-gray-950/60 px-3 py-2" title="${title}">
-                <div class="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black text-white flex-shrink-0" style="background:${bg}">
-                    ${escapeHtml(bettor.initials || "??")}
-                </div>
+            <div class="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2" title="${title}">
+                ${renderBettorAvatar(bettor)}
                 <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2 min-w-0">
-                        <div class="text-sm font-semibold text-white truncate">${escapeHtml(bettor.name)}</div>
+                        <div class="text-sm font-semibold text-slate-900 truncate">${escapeHtml(bettor.name)}</div>
                         <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${outcomeClass}">${escapeHtml(bettor.outcome_label || "Chờ kết quả")}</span>
                     </div>
-                    <div class="text-[11px] text-gray-500">${formatVNDateTime(bettor.created_at)}</div>
+                    <div class="text-[11px] text-slate-500">${formatVNDateTime(bettor.created_at)}</div>
                     ${quote}
                 </div>
                 <div class="text-right shrink-0">
-                    <div class="text-sm font-black text-yellow-400">${Number(bettor.stake).toLocaleString()}đ</div>
-                    <div class="text-[11px] text-gray-400">${rewardText}</div>
+                    <div class="text-sm font-black text-sky-600">${Number(bettor.stake).toLocaleString()}đ</div>
+                    <div class="text-[11px] text-slate-500">${rewardText}</div>
                 </div>
                 ${wolfBadge}
             </div>`;
@@ -763,11 +767,11 @@ function renderBettorList(list) {
 
 function getOutcomeBadgeClass(outcome) {
     return {
-        WIN: "border-emerald-800/80 bg-emerald-950/60 text-emerald-200",
-        LOSE: "border-rose-800/80 bg-rose-950/60 text-rose-200",
-        REFUND: "border-amber-800/80 bg-amber-950/60 text-amber-200",
-        PENDING: "border-gray-700 bg-gray-800/90 text-gray-300",
-    }[outcome] || "border-gray-700 bg-gray-800/90 text-gray-300";
+        WIN: "border-emerald-200 bg-emerald-50 text-emerald-700",
+        LOSE: "border-rose-200 bg-rose-50 text-rose-700",
+        REFUND: "border-amber-200 bg-amber-50 text-amber-700",
+        PENDING: "border-slate-200 bg-slate-50 text-slate-600",
+    }[outcome] || "border-slate-200 bg-slate-50 text-slate-600";
 }
 
 window.toggleGroup = function(dateKey) {
@@ -821,7 +825,7 @@ async function fetchLeaderboard() {
 
 function renderLeaderboard(data, container) {
     if (!data.length) {
-        container.innerHTML = `<div class="text-center py-8 text-gray-500 text-sm">Chưa có dữ liệu xếp hạng.</div>`;
+        container.innerHTML = `<div class="text-center py-8 text-slate-500 text-sm">Chưa có dữ liệu xếp hạng.</div>`;
         return;
     }
 

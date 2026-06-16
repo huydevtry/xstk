@@ -32,9 +32,9 @@ function safeCssColor(value) {
 function renderMiniAvatar({ avatar_url, avatar_color, initials }) {
     const avatarSrc = safeImageSrc(avatar_url);
     if (avatarSrc) {
-        return `<img src="${avatarSrc}" alt="" class="w-5 h-5 rounded-full object-cover border border-indigo-400/70 flex-shrink-0">`;
+        return `<img src="${avatarSrc}" alt="" class="w-5 h-5 rounded-full object-cover border border-sky-300 flex-shrink-0">`;
     }
-    return `<span class="w-5 h-5 rounded-full border border-indigo-400/70 flex items-center justify-center text-[9px] font-black text-white flex-shrink-0" style="background:${safeCssColor(avatar_color)}">${escapeHtml(initials || "??")}</span>`;
+    return `<span class="w-5 h-5 rounded-full border border-sky-300 flex items-center justify-center text-[9px] font-black text-white flex-shrink-0" style="background:${safeCssColor(avatar_color)}">${escapeHtml(initials || "??")}</span>`;
 }
 
 function toDatetimeLocal(value) {
@@ -69,8 +69,8 @@ async function fetchMe() {
             el.innerHTML = `
                 <span class="inline-flex items-center gap-2">
                     ${renderMiniAvatar(data)}
-                    <span class="font-semibold text-white truncate max-w-[10rem]">${escapeHtml(displayName)}</span>
-                    <span class="text-indigo-300">| Admin</span>
+                    <span class="font-semibold text-slate-900 truncate max-w-[10rem]">${escapeHtml(displayName)}</span>
+                    <span class="text-sky-600">| Admin</span>
                 </span>`;
         } else {
             document.getElementById("user-info").innerText = "Lỗi xác thực";
@@ -85,7 +85,7 @@ async function fetchMatches() {
         const res = await fetch("/api/v1/admin/matches");
         if (!res.ok) {
             const err = await res.json();
-            document.getElementById("admin-match-list").innerHTML = `<div class="p-4 bg-red-900/50 text-red-400 rounded-xl border border-red-800">Lỗi: ${escapeHtml(err.detail || "Không thể tải danh sách")}</div>`;
+            document.getElementById("admin-match-list").innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-xl border border-rose-200">Lỗi: ${escapeHtml(err.detail || "Không thể tải danh sách")}</div>`;
             return;
         }
         matchCache = await res.json();
@@ -100,14 +100,14 @@ function renderMatches(matches) {
     list.innerHTML = "";
 
     if (matches.length === 0) {
-        list.innerHTML = '<div class="text-center text-gray-500 py-8">Không có trận đấu nào.</div>';
+        list.innerHTML = '<div class="text-center text-slate-500 py-8">Không có trận đấu nào.</div>';
         return;
     }
 
     matches.forEach(m => {
         const isFinished = m.status === "finished";
         const card = document.createElement("div");
-        card.className = "bg-gray-800 p-4 rounded-xl border border-gray-700 flex flex-col gap-4";
+        card.className = "bg-white p-4 rounded-xl border border-slate-200 flex flex-col gap-4 shadow-sm";
         const homeIconSrc = safeImageSrc(m.home_icon);
         const awayIconSrc = safeImageSrc(m.away_icon);
         const homeIconHtml = homeIconSrc ? `<img src="${homeIconSrc}" class="w-5 h-5 inline-block mr-1 rounded-full" alt="">` : "";
@@ -121,18 +121,18 @@ function renderMatches(matches) {
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div class="flex-1 w-full">
                     <div class="flex items-center justify-between mb-2 gap-3">
-                        <span class="text-xs ${isFinished ? "text-gray-500 bg-gray-900 border-gray-700" : "text-emerald-400 bg-emerald-950 border-emerald-800"} px-2 py-0.5 rounded border">${status}</span>
-                        <span class="text-xs text-gray-400 text-right">ID: ${m.id} | Kèo chấp: ${m.handicap} | ${escapeHtml(startTime)}</span>
+                        <span class="text-xs ${isFinished ? "text-slate-600 bg-slate-50 border-slate-200" : "text-emerald-700 bg-emerald-50 border-emerald-200"} px-2 py-0.5 rounded border">${status}</span>
+                        <span class="text-xs text-slate-500 text-right">ID: ${m.id} | Kèo chấp: ${m.handicap} | ${escapeHtml(startTime)}</span>
                     </div>
-                    <div class="flex justify-between items-center font-bold text-lg">
+                    <div class="flex justify-between items-center font-bold text-lg text-slate-900">
                         <div class="w-2/5 text-right flex items-center justify-end">${homeIconHtml}${homeTeam}</div>
-                        <div class="w-1/5 text-center text-gray-500">${isFinished ? `${m.home_score} - ${m.away_score}` : "vs"}</div>
+                        <div class="w-1/5 text-center text-slate-400">${isFinished ? `${m.home_score} - ${m.away_score}` : "vs"}</div>
                         <div class="w-2/5 text-left flex items-center justify-start">${awayTeam}${awayIconHtml}</div>
                     </div>
                 </div>
                 <div class="flex gap-2 w-full md:w-auto justify-end">
-                    <button onclick="editMatch(${m.id})" ${isFinished ? "disabled" : ""} class="px-3 py-2 rounded bg-gray-700 hover:bg-gray-600 text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed">Sửa</button>
-                    <button onclick="deleteMatch(${m.id})" ${isFinished ? "disabled" : ""} class="px-3 py-2 rounded bg-red-700 hover:bg-red-600 text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed">Xóa</button>
+                    <button onclick="editMatch(${m.id})" ${isFinished ? "disabled" : ""} class="px-3 py-2 rounded border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed">Sửa</button>
+                    <button onclick="deleteMatch(${m.id})" ${isFinished ? "disabled" : ""} class="px-3 py-2 rounded border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed">Xóa</button>
                 </div>
             </div>
         `;
@@ -140,10 +140,10 @@ function renderMatches(matches) {
         if (!isFinished) {
             html += `
             <div class="flex gap-2 w-full md:w-auto items-center justify-end">
-                <input type="number" id="home-score-${m.id}" placeholder="H" class="w-16 bg-gray-900 border border-gray-700 text-white px-2 py-2 rounded text-center" min="0">
-                <span class="text-gray-500">-</span>
-                <input type="number" id="away-score-${m.id}" placeholder="A" class="w-16 bg-gray-900 border border-gray-700 text-white px-2 py-2 rounded text-center" min="0">
-                <button onclick="resolveMatch(${m.id})" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded font-semibold transition-colors whitespace-nowrap ml-2">Giải trận</button>
+                <input type="number" id="home-score-${m.id}" placeholder="H" class="w-16 bg-white border border-slate-200 text-slate-900 px-2 py-2 rounded text-center" min="0">
+                <span class="text-slate-400">-</span>
+                <input type="number" id="away-score-${m.id}" placeholder="A" class="w-16 bg-white border border-slate-200 text-slate-900 px-2 py-2 rounded text-center" min="0">
+                <button onclick="resolveMatch(${m.id})" class="bg-sky-600 hover:bg-sky-500 text-white px-4 py-2 rounded font-semibold transition-colors whitespace-nowrap ml-2">Giải trận</button>
             </div>
             `;
         }
@@ -197,8 +197,8 @@ function showCsvImportResult(message, type = "success", errors = []) {
         : "";
     el.className = `mt-3 text-sm rounded-lg border px-3 py-2 ${
         type === "success"
-            ? "bg-emerald-950/50 border-emerald-800 text-emerald-200"
-            : "bg-red-950/50 border-red-800 text-red-200"
+            ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+            : "bg-rose-50 border-rose-200 text-rose-700"
     }`;
     el.innerHTML = `${escapeHtml(message)}${errorHtml}`;
 }
