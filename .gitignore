@@ -1,5 +1,6 @@
 # Local tooling
 .codegraph/
+.codex-python/
 
 # Python
 __pycache__/

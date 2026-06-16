@@ -54,9 +54,13 @@ CHOICE_LABELS = {"HOME": "Chủ nhà", "DRAW": "Hòa", "AWAY": "Khách"}
 OUTCOME_LABELS = {
     "WIN": "Thắng",
     "LOSE": "Thua",
-    "REFUND": "Hoàn điểm",
+    "REFUND": "Hoàn 🪙",
     "PENDING": "Chờ kết quả",
 }
+
+
+def _format_coins(value: int) -> str:
+    return f"{int(value):,}🪙"
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_ADMIN_CHAT_ID = os.getenv("TELEGRAM_ADMIN_CHAT_ID", "").strip()
@@ -216,7 +220,7 @@ class MatchPayload(BaseModel):
     start_time: datetime
 
 class PointRechargePayload(BaseModel):
-    amount: int = Field(..., ge=100, le=10000)
+    amount: int = Field(..., ge=10, le=10000)
 
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
@@ -504,7 +508,7 @@ async def place_bet(
 
     # Validate balance
     if user.total_points < payload.stake:
-        raise HTTPException(status_code=400, detail="Số điểm không đủ.")
+        raise HTTPException(status_code=400, detail="Số 🪙 không đủ.")
 
     # Kiểm tra đã cược chưa (1 user / 1 match)
     existing = (await db.execute(
@@ -522,7 +526,7 @@ async def place_bet(
         )
         if balance_update.rowcount != 1:
             await db.rollback()
-            raise HTTPException(status_code=400, detail="Số điểm không đủ.")
+            raise HTTPException(status_code=400, detail="Số 🪙 không đủ.")
 
         bet = Bet(
             user_id=user.id,
@@ -750,15 +754,15 @@ async def get_activity_feed(db: AsyncSession = Depends(get_db)):
     rows = (await db.execute(query)).all()
 
     TEMPLATES = [
-        "🔥 {name} vừa tất tay {stake} điểm vào {team}",
-        "💸 {name} đặt {stake} điểm chọn {team}",
-        "🎯 {name} tin tưởng {team} với {stake} điểm",
+        "🔥 {name} vừa tất tay {stake} vào {team}",
+        "💸 {name} đặt {stake} chọn {team}",
+        "🎯 {name} tin tưởng {team} với {stake}",
         "🤡 {name} lại tiếp tục tin tưởng {team}",
-        "😤 {name} quyết tâm với {team} — {stake} điểm",
-        "🃏 {name} bài ngửa {stake} điểm vào {team}",
-        "💰 {name} cược đậm {stake} điểm vào {team}",
-        "💪 {name} vô {stake} điểm vào {team}, liệu có nhổ được xe?",
-        "👍 {name} xuống xác {stake} điểm vào {team}"
+        "😤 {name} quyết tâm với {team} — {stake}",
+        "🃏 {name} bài ngửa {stake} vào {team}",
+        "💰 {name} cược đậm {stake} vào {team}",
+        "💪 {name} vô {stake} vào {team}, liệu có nhổ được xe?",
+        "👍 {name} xuống xác {stake} vào {team}"
     ]
 
     CHOICE_LABELS = {"HOME": "Chủ nhà", "DRAW": "Hòa", "AWAY": "Khách"}
@@ -775,7 +779,7 @@ async def get_activity_feed(db: AsyncSession = Depends(get_db)):
         # Dùng seed ổn định để template không đổi mỗi lần refresh
         seed = hash(f"{r.Bet.id}{r.Bet.created_at}")
         tpl = TEMPLATES[abs(seed) % len(TEMPLATES)]
-        text = tpl.format(name=name, stake=r.Bet.stake, team=team)
+        text = tpl.format(name=name, stake=_format_coins(r.Bet.stake), team=team)
         activities.append({
             "text": text,
             "time": r.Bet.created_at.isoformat(),
@@ -857,11 +861,11 @@ def _stable_pick(options, seed: str) -> str:
 
 def _format_reward_label(outcome: str, stake: int, points_earned: Optional[int]) -> str:
     if outcome == "WIN":
-        return f"+{int(points_earned or 0):,}đ"
+        return f"+{_format_coins(int(points_earned or 0))}"
     if outcome == "LOSE":
-        return "0đ"
+        return "0🪙"
     if outcome == "REFUND":
-        return f"Hoàn {int(stake):,}đ"
+        return f"Hoàn {_format_coins(int(stake))}"
     return "Chờ kết quả"
 
 
@@ -879,7 +883,7 @@ def _build_detail_quote(
     winner_text = _choice_label(winning_choice)
     quote_bank = {
         "WIN": [
-            "{name} ôm đúng cửa {choice}. Hôm nay bảng điểm phải tự chỉnh lại thái độ.",
+            "{name} ôm đúng cửa {choice}. Hôm nay bảng 🪙 phải tự chỉnh lại thái độ.",
             "{name} chọn {choice} chuẩn như xem trước kết quả. Đám đông xin phép học theo.",
             "{name} vào kèo {choice} rất gọn. Trận này trực giác đã thắng tranh cãi.",
         ],
@@ -889,19 +893,19 @@ def _build_detail_quote(
             "{name} đi cửa {choice} hơi sớm một nhịp. Hôm nay trực giác xin nghỉ phép.",
         ],
         "REFUND": [
-            "{name} gặp kèo hoàn điểm. Ít ra ví vẫn nguyên, tinh thần cũng đỡ đau.",
+            "{name} gặp kèo hoàn 🪙. Ít ra ví vẫn nguyên, tinh thần cũng đỡ đau.",
             "{name} đi một vòng rồi quay lại vạch xuất phát. Trận này công bằng đến mức hơi buồn cười.",
-            "{name} không mất điểm nhưng cũng chưa kịp trêu ai. Kèo này đúng kiểu hòa cho tất cả.",
+            "{name} không mất 🪙 nhưng cũng chưa kịp trêu ai. Kèo này đúng kiểu hòa cho tất cả.",
         ],
         "PENDING": [
             "{name} đang chờ kèo nổ. Cửa {choice} mà lên tiếng thì câu chuyện sẽ vui hơn nhiều.",
-            "{name} đã vào cửa {choice}, giờ chỉ còn chờ bảng điểm quyết định phần hài hước.",
+            "{name} đã vào cửa {choice}, giờ chỉ còn chờ bảng 🪙 quyết định phần hài hước.",
             "{name} chọn {choice}, còn trận đấu thì giữ kịch tính khá lâu.",
         ],
     }
     seed = f"{match.id}:{name}:{choice}:{outcome}:{stake}:{points_earned or 0}:{winning_choice or ''}"
     template = _stable_pick(quote_bank.get(outcome, quote_bank["PENDING"]), seed)
-    return template.format(name=name, choice=choice_text, winner=winner_text, stake=stake)
+    return template.format(name=name, choice=choice_text, winner=winner_text, stake=_format_coins(stake))
 
 
 def _build_headline_quote(
@@ -914,7 +918,7 @@ def _build_headline_quote(
         if settlement["refunded"]:
             return _stable_pick(
                 [
-                    "Kèo này hoàn điểm, nên ai cũng rời bàn với vẻ mặt khá lịch sự.",
+                    "Kèo này hoàn tiền, nên ai cũng rời bàn với vẻ mặt khá lịch sự.",
                     "Trận đã xong nhưng không cửa nào đủ lực để giữ lại màn khịa dài lâu.",
                     "Không ai ăn đủ, thế là cuộc vui tạm dừng trong thế cân bằng hơi buồn cười.",
                     "Tưởng thế nào, đá hùng hục 90 phút xong trả lại tiền. Quần áo ai nấy mặc, nhà ai nấy về.",

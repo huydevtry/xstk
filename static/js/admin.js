@@ -31,6 +31,10 @@ function safeCssColor(value) {
     return /^#[0-9a-f]{6}$/i.test(color) ? color : "#6366f1";
 }
 
+function formatCoins(value) {
+    return `${Number(value || 0).toLocaleString()}🪙`;
+}
+
 function renderMiniAvatar({ avatar_url, avatar_color, initials }) {
     const avatarSrc = safeImageSrc(avatar_url);
     if (avatarSrc) {
@@ -46,7 +50,7 @@ async function fetchRechargeRequests() {
         const res = await fetch("/api/v1/admin/recharge-requests");
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            list.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-xl border border-rose-200">Lỗi: ${escapeHtml(err.detail || "Không thể tải yêu cầu nạp điểm")}</div>`;
+            list.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-xl border border-rose-200">Lỗi: ${escapeHtml(err.detail || "Không thể tải yêu cầu nạp 🪙")}</div>`;
             return;
         }
         rechargeCache = await res.json();
@@ -61,7 +65,7 @@ function renderRechargeRequests(requests) {
     const list = document.getElementById("admin-recharge-list");
     if (!list) return;
     if (!requests.length) {
-        list.innerHTML = `<div class="text-center text-slate-500 py-6">Không có yêu cầu nạp điểm.</div>`;
+        list.innerHTML = `<div class="text-center text-slate-500 py-6">Không có yêu cầu nạp 🪙.</div>`;
         return;
     }
 
@@ -88,8 +92,8 @@ function renderRechargeRequests(requests) {
                 </div>
                 <div class="flex items-center justify-between md:justify-end gap-3">
                     <div class="text-right">
-                        <div class="text-lg font-black text-[#D3af37]">${Number(item.amount).toLocaleString()} điểm</div>
-                        <div class="text-xs text-slate-500">Số dư: ${Number(user.total_points || 0).toLocaleString()}</div>
+                        <div class="text-lg font-black text-[#D3af37]">${formatCoins(item.amount)}</div>
+                        <div class="text-xs text-slate-500">Số dư: ${formatCoins(user.total_points || 0)}</div>
                     </div>
                     <button onclick="approveRechargeRequest(${item.id})" ${isPending ? "" : "disabled"}
                         class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
@@ -103,7 +107,7 @@ function renderRechargeRequests(requests) {
 async function approveRechargeRequest(id) {
     const request = rechargeCache.find(item => item.id === id);
     if (!request || request.status !== "pending") return;
-    if (!confirm(`Xác nhận cộng ${Number(request.amount).toLocaleString()} điểm cho ${request.user?.email || "user"}?`)) return;
+    if (!confirm(`Xác nhận cộng ${formatCoins(request.amount)} cho ${request.user?.email || "user"}?`)) return;
 
     try {
         const res = await fetch(`/api/v1/admin/recharge-requests/${id}/approve`, { method: "POST" });
