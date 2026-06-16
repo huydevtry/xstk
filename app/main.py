@@ -15,9 +15,6 @@ import random
 import uuid as uuid_lib
 from pathlib import Path
 
-from app.google_sheets import get_sheet_data
-from dateutil import parser as date_parser
-
 from app.database import engine, Base, get_db
 from app.models import Match, MatchStatus, Bet, User
 from app.dependencies import get_current_user, get_admin_user
@@ -36,6 +33,23 @@ templates = Jinja2Templates(directory="templates")
 async def startup_event():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        match_columns = (
+            await conn.exec_driver_sql("PRAGMA table_info(matches)")
+        ).fetchall()
+        match_column_names = {row[1] for row in match_columns}
+        missing_match_columns = {
+            "home_icon": "ALTER TABLE matches ADD COLUMN home_icon VARCHAR",
+            "away_icon": "ALTER TABLE matches ADD COLUMN away_icon VARCHAR",
+            "home_score": "ALTER TABLE matches ADD COLUMN home_score INTEGER DEFAULT 0",
+            "away_score": "ALTER TABLE matches ADD COLUMN away_score INTEGER DEFAULT 0",
+            "handicap": "ALTER TABLE matches ADD COLUMN handicap FLOAT DEFAULT 0.0",
+            "status": "ALTER TABLE matches ADD COLUMN status VARCHAR DEFAULT 'upcoming'",
+            "start_time": "ALTER TABLE matches ADD COLUMN start_time DATETIME",
+        }
+        for column_name, ddl in missing_match_columns.items():
+            if column_name not in match_column_names:
+                await conn.exec_driver_sql(ddl)
+
         await conn.exec_driver_sql(
             """
             UPDATE bets
@@ -110,6 +124,15 @@ class BetPayload(BaseModel):
 class ResolvePayload(BaseModel):
     home_score: int = Field(..., ge=0)
     away_score: int = Field(..., ge=0)
+
+class MatchPayload(BaseModel):
+    home_team: str = Field(..., min_length=1, max_length=80)
+    away_team: str = Field(..., min_length=1, max_length=80)
+    home_icon: Optional[str] = Field(default=None, max_length=500)
+    away_icon: Optional[str] = Field(default=None, max_length=500)
+    handicap: float = 0.0
+    status: MatchStatus = MatchStatus.upcoming
+    start_time: datetime
 
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
@@ -591,80 +614,117 @@ async def get_activity_feed(db: AsyncSession = Depends(get_db)):
 
 
 # GET /api/v1/admin/matches — Danh sách tất cả trận đấu cho Admin
+def _match_response(match: Match):
+    return {
+        "id": match.id,
+        "home_team": match.home_team,
+        "home_icon": match.home_icon,
+        "away_team": match.away_team,
+        "away_icon": match.away_icon,
+        "home_score": match.home_score,
+        "away_score": match.away_score,
+        "handicap": match.handicap,
+        "status": match.status,
+        "start_time": match.start_time.isoformat(),
+    }
+
+
 @app.get("/api/v1/admin/matches")
 async def get_all_matches(admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     query = select(Match).order_by(Match.start_time.asc())
     rows = (await db.execute(query)).scalars().all()
-    return [
-        {
-            "id": r.id,
-            "home_team": r.home_team,
-            "home_icon": r.home_icon,
-            "away_team": r.away_team,
-            "away_icon": r.away_icon,
-            "home_score": r.home_score,
-            "away_score": r.away_score,
-            "handicap": r.handicap,
-            "status": r.status,
-            "start_time": r.start_time.isoformat(),
-        }
-        for r in rows
-    ]
+    return [_match_response(r) for r in rows]
 
 
-# POST /api/v1/admin/sync-matches
-@app.post("/api/v1/admin/sync-matches")
-async def sync_matches(admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+# POST /api/v1/admin/matches — Thêm trận đấu mới
+@app.post("/api/v1/admin/matches", status_code=201)
+async def create_match(
+    payload: MatchPayload,
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if payload.status == MatchStatus.finished:
+        raise HTTPException(status_code=400, detail="Hãy dùng chức năng giải trận để kết thúc trận.")
+
     try:
-        records = get_sheet_data()
+        match = Match(
+            home_team=payload.home_team.strip(),
+            home_icon=(payload.home_icon or "").strip() or None,
+            away_team=payload.away_team.strip(),
+            away_icon=(payload.away_icon or "").strip() or None,
+            handicap=payload.handicap,
+            status=payload.status,
+            start_time=payload.start_time,
+        )
+        db.add(match)
+        await db.commit()
+        await db.refresh(match)
     except Exception as e:
+        await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
+    return {"message": "Đã thêm trận đấu.", "match": _match_response(match)}
+
+
+# POST /api/v1/admin/matches/{match_id}/update — Cập nhật thông tin trận
+@app.post("/api/v1/admin/matches/{match_id}/update")
+async def update_match(
+    match_id: int,
+    payload: MatchPayload,
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    match = (await db.execute(select(Match).where(Match.id == match_id))).scalars().first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Trận đấu không tồn tại.")
+    if match.status == MatchStatus.finished:
+        raise HTTPException(status_code=400, detail="Không thể sửa trận đã giải.")
+    if payload.status == MatchStatus.finished:
+        raise HTTPException(status_code=400, detail="Hãy dùng chức năng giải trận để kết thúc trận.")
+
     try:
-        for row in records:
-            match_id = row.get("ID")
-            if not match_id:
-                continue
+        match.home_team = payload.home_team.strip()
+        match.home_icon = (payload.home_icon or "").strip() or None
+        match.away_team = payload.away_team.strip()
+        match.away_icon = (payload.away_icon or "").strip() or None
+        match.handicap = payload.handicap
+        match.status = payload.status
+        match.start_time = payload.start_time
+        db.add(match)
+        await db.commit()
+        await db.refresh(match)
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
-            home_team = row.get("Home Team", "Unknown")
-            home_icon = row.get("Home Icon") or None
-            away_team = row.get("Away Team", "Unknown")
-            away_icon = row.get("Away Icon") or None
-            handicap = float(row.get("Handicap", 0.0))
+    return {"message": "Đã cập nhật trận đấu.", "match": _match_response(match)}
 
-            try:
-                start_time = date_parser.parse(str(row.get("Start Time")))
-            except (TypeError, ValueError):
-                start_time = datetime.utcnow()
 
-            existing = (await db.execute(select(Match).where(Match.id == match_id))).scalars().first()
-            if existing:
-                existing.home_team = home_team
-                existing.home_icon = home_icon
-                existing.away_team = away_team
-                existing.away_icon = away_icon
-                existing.handicap = handicap
-                existing.start_time = start_time
-                db.add(existing)
-            else:
-                new_match = Match(
-                    id=match_id,
-                    home_team=home_team,
-                    home_icon=home_icon,
-                    away_team=away_team,
-                    away_icon=away_icon,
-                    handicap=handicap,
-                    start_time=start_time,
-                    status=MatchStatus.upcoming
-                )
-                db.add(new_match)
+# POST /api/v1/admin/matches/{match_id}/delete — Xóa trận chưa có cược
+@app.post("/api/v1/admin/matches/{match_id}/delete")
+async def delete_match(
+    match_id: int,
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    match = (await db.execute(select(Match).where(Match.id == match_id))).scalars().first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Trận đấu không tồn tại.")
 
+    bet_count = (await db.execute(
+        select(func.count(Bet.id)).where(Bet.match_id == match_id)
+    )).scalar_one()
+    if bet_count:
+        raise HTTPException(status_code=400, detail="Không thể xóa trận đã có người đặt cược.")
+
+    try:
+        await db.delete(match)
         await db.commit()
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-    return {"message": f"Đã đồng bộ {len(records)} trận đấu từ Google Sheets thành công."}
+    return {"message": "Đã xóa trận đấu."}
 
 
 # POST /api/v1/admin/resolve-match/{match_id} — Giải trận
