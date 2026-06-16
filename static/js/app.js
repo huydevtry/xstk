@@ -40,7 +40,7 @@ function safeCssColor(value) {
 }
 
 function formatCoins(value) {
-    return `${Number(value || 0).toLocaleString()}d`;
+    return `${Number(value || 0).toLocaleString()}đ`;
 }
 
 function renderLeaderboardAvatar(entry, className = "lb-avatar") {
@@ -470,7 +470,7 @@ function renderStakePanel(matchId, choice, totalPool, stakesOnChoice) {
         panel.innerHTML = `
             <div class="stake-panel">
                 <label>Số điểm đặt cược</label>
-                <div class="text-sm text-rose-600 mt-2">Bạn cần tối thiểu ${MIN_STAKE.toLocaleString()}d để đặt cược. Hiện tại bạn đang có ${formatCoins(maxStake)}.</div>
+                <div class="text-sm text-rose-600 mt-2">Bạn cần tối thiểu ${MIN_STAKE.toLocaleString()}đ để đặt cược. Hiện tại bạn đang có ${formatCoins(maxStake)}.</div>
             </div>`;
         return;
     }
@@ -859,6 +859,7 @@ function renderLeaderboard(data, container) {
             : "";
 
         const rawName = String(entry.display_name ?? entry.name ?? "");
+        const profileHref = entry.id ? `/profile?user_id=${encodeURIComponent(entry.id)}` : "/profile";
 
         let trendHtml;
         if (entry.trend === "up") {
@@ -872,13 +873,15 @@ function renderLeaderboard(data, container) {
         return `
         <div class="lb-row">
             ${rankEl}
-            ${renderLeaderboardAvatar({ ...entry, name: rawName })}
-            <div class="lb-info">
+            <a href="${profileHref}" class="lb-info group text-left block">
                 <div class="lb-name">
-                    <span>${escapeHtml(rawName)}</span>
-                    ${badgeHtml}
+                    ${renderLeaderboardAvatar({ ...entry, name: rawName })}
+                    <div class="min-w-0">
+                        <span class="group-hover:underline">${escapeHtml(rawName)}</span>
+                        ${badgeHtml}
+                    </div>
                 </div>
-            </div>
+            </a>
             <div class="lb-points">
                 <span class="lb-score">${entry.total_points.toLocaleString()}</span>
                 ${trendHtml}

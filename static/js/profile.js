@@ -3,6 +3,8 @@ let _profileData  = null;
 let _selectedFile = null;
 let openCardId    = null;
 let _rechargeRequests = [];
+const PROFILE_USER_ID = new URLSearchParams(window.location.search).get("user_id") || "";
+const IS_OWN_PROFILE = !PROFILE_USER_ID;
 
 function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>"']/g, ch => ({
@@ -31,7 +33,17 @@ function safeCssColor(value) {
 }
 
 function formatCoins(value) {
-    return `${Number(value || 0).toLocaleString()}d`;
+    return `${Number(value || 0).toLocaleString()}đ`;
+}
+
+function renderBadge(badge) {
+    if (!badge) return "";
+    return `<span class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold ${
+        badge.color === "gold" ? "border-amber-200 bg-amber-50 text-amber-700" :
+        badge.color === "purple" ? "border-violet-200 bg-violet-50 text-violet-700" :
+        badge.color === "red" ? "border-rose-200 bg-rose-50 text-rose-700" :
+        "border-slate-200 bg-slate-50 text-slate-700"
+    }">${escapeHtml(badge.emoji)} ${escapeHtml(badge.label)}</span>`;
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -46,11 +58,17 @@ document.addEventListener("DOMContentLoaded", () => {
 // ─── Fetch & render profile ───────────────────────────────────────────────────
 async function fetchProfile() {
     try {
-        const res = await fetch("/api/v1/me");
+        const url = PROFILE_USER_ID
+            ? `/api/v1/users/${encodeURIComponent(PROFILE_USER_ID)}`
+            : "/api/v1/me";
+        const res = await fetch(url);
         if (!res.ok) return;
         const data = await res.json();
         _profileData = data;
         applyProfileUI(data);
+        if (data.can_edit !== false) {
+            fetchRechargeRequests();
+        }
     } catch (err) {
         console.error("fetchProfile error:", err);
     }
@@ -59,6 +77,7 @@ async function fetchProfile() {
 function applyProfileUI(data) {
     const shortName = data.display_name || data.email.split("@")[0];
     const safeShortName = escapeHtml(shortName);
+    const badgeHtml = renderBadge(data.badge);
 
     document.getElementById("profile-name").textContent   = data.display_name || data.email.split("@")[0];
     document.getElementById("profile-email").textContent  = data.email;
@@ -67,9 +86,18 @@ function applyProfileUI(data) {
     document.getElementById("user-info").innerHTML =
         `${headerAvatarHtml(data)}
          <span class="font-semibold text-slate-900">${safeShortName}</span>
-         &nbsp;|&nbsp; <span class="text-[#D3af37] font-bold">${data.total_points.toLocaleString()}</span>d`;
+         &nbsp;|&nbsp; <span class="text-[#D3af37] font-bold">${data.total_points.toLocaleString()}</span>đ`;
 
     renderAvatar(data);
+
+    const badgeHost = document.getElementById("profile-badge");
+    if (badgeHost) badgeHost.innerHTML = badgeHtml;
+
+    const editable = data.can_edit !== false;
+    document.getElementById("open-avatar-modal")?.classList.toggle("hidden", !editable);
+    document.getElementById("open-name-modal")?.classList.toggle("hidden", !editable);
+    const rechargeSection = document.getElementById("recharge-section");
+    if (rechargeSection) rechargeSection.classList.toggle("hidden", !editable);
 }
 
 function headerAvatarHtml({ avatar_url, avatar_color, initials }) {
@@ -281,7 +309,10 @@ function showErr(el, msg) {
 async function fetchBetHistory() {
     const listEl = document.getElementById("bet-list");
     try {
-        const res = await fetch("/api/v1/me/bets");
+        const url = PROFILE_USER_ID
+            ? `/api/v1/users/${encodeURIComponent(PROFILE_USER_ID)}/bets`
+            : "/api/v1/me/bets";
+        const res = await fetch(url);
         if (!res.ok) {
             listEl.innerHTML = `<div class="text-center text-red-400 py-8 text-sm">Không thể tải lịch sử cược.</div>`;
             return;
@@ -427,6 +458,11 @@ function toggleDetail(betId) {
 async function fetchRechargeRequests() {
     const listEl = document.getElementById("recharge-list");
     if (!listEl) return;
+    if (!IS_OWN_PROFILE) {
+        const rechargeSection = document.getElementById("recharge-section");
+        if (rechargeSection) rechargeSection.classList.add("hidden");
+        return;
+    }
     try {
         const res = await fetch("/api/v1/me/recharge-requests");
         if (!res.ok) {

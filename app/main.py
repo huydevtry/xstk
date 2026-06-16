@@ -252,20 +252,69 @@ async def read_profile(request: Request, user: User = Depends(get_current_user))
 
 
 @app.get("/api/v1/me")
-async def get_me(user: User = Depends(get_current_user)):
-    base_name = user.email.split("@")[0]
-    display_name = user.display_name or base_name
-    initials = (display_name[:2]).upper()
-    is_admin = user.email.strip().lower() in ADMIN_EMAILS
-    return {
-        "email": user.email,
-        "display_name": display_name,
-        "total_points": user.total_points,
-        "avatar_url": user.avatar_url,
-        "avatar_color": user.avatar_color or "#6366f1",
-        "initials": initials,
-        "is_admin": is_admin,
-    }
+async def get_me(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    return await _build_profile_payload(user, db=db, include_badge=True)
+
+
+async def _get_user_by_id(db: AsyncSession, user_id: str) -> User:
+    try:
+        parsed_id = uuid_lib.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Người dùng không tồn tại.")
+
+    user = (await db.execute(select(User).where(User.id == parsed_id))).scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Người dùng không tồn tại.")
+    return user
+
+
+@app.get("/api/v1/users/{user_id}")
+async def get_public_user_profile(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    target_user = await _get_user_by_id(db, user_id)
+    payload = await _build_profile_payload(target_user, db=db, include_badge=True)
+    payload["is_self"] = target_user.id == current_user.id
+    payload["can_edit"] = payload["is_self"]
+    return payload
+
+
+@app.get("/api/v1/users/{user_id}/bets")
+async def get_public_user_bets(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    target_user = await _get_user_by_id(db, user_id)
+    query = (
+        select(Bet, Match)
+        .join(Match, Bet.match_id == Match.id)
+        .where(Bet.user_id == target_user.id)
+        .order_by(Bet.created_at.desc())
+    )
+    rows = (await db.execute(query)).all()
+    return [
+        {
+            "bet_id": r.Bet.id,
+            "match_id": r.Match.id,
+            "home_team": r.Match.home_team,
+            "home_icon": r.Match.home_icon,
+            "away_team": r.Match.away_team,
+            "away_icon": r.Match.away_icon,
+            "match_status": r.Match.status,
+            "home_score": r.Match.home_score,
+            "away_score": r.Match.away_score,
+            "handicap": r.Match.handicap,
+            "start_time": r.Match.start_time.isoformat(),
+            "choice": r.Bet.choice,
+            "stake": r.Bet.stake,
+            "points_earned": r.Bet.points_earned,
+            "created_at": r.Bet.created_at.isoformat(),
+        }
+        for r in rows
+    ]
 
 
 # POST /api/v1/me/update — Cập nhật thông tin cá nhân (display_name)
@@ -728,6 +777,7 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
             badge = None
 
         leaderboard.append({
+            "id": str(user.id),
             "rank": rank,
             "name": _user_display_name(user),
             "display_name": _user_display_name(user),
@@ -830,6 +880,115 @@ def _user_avatar_payload(user: User) -> dict:
         "avatar_color": user.avatar_color or "#6366f1",
         "initials": _user_initials(user),
     }
+
+
+def _user_badge_payload(
+    *,
+    rank: Optional[int],
+    total_users: int,
+    streak_loss: int,
+    is_contrarian: bool,
+) -> Optional[dict]:
+    if rank == 1:
+        return {"label": "Đại gia", "emoji": "🤑", "color": "gold"}
+    if rank == total_users:
+        return {"label": "Báo thủ", "emoji": "🐣", "color": "gray"}
+    if is_contrarian:
+        return {"label": "Nhà tiên tri", "emoji": "🔮", "color": "purple"}
+    if streak_loss >= 3:
+        return {"label": "Cứu rỗi", "emoji": "🙏", "color": "red"}
+    return None
+
+
+async def _build_profile_payload(
+    user: User,
+    db: Optional[AsyncSession] = None,
+    *,
+    include_badge: bool = True,
+) -> dict:
+    payload = {
+        "id": str(user.id),
+        "email": user.email,
+        "display_name": _user_display_name(user),
+        "total_points": user.total_points,
+        "avatar_url": user.avatar_url,
+        "avatar_color": user.avatar_color or "#6366f1",
+        "initials": _user_initials(user),
+        "is_admin": user.email.strip().lower() in ADMIN_EMAILS,
+        "is_self": True,
+        "can_edit": True,
+    }
+    if include_badge and db is not None:
+        payload["badge"] = await _build_user_badge_for_profile(user, db)
+    return payload
+
+
+async def _build_user_badge_for_profile(user: User, db: AsyncSession) -> Optional[dict]:
+    ordered_ids = (
+        await db.execute(
+            select(User.id).order_by(desc(User.total_points), User.id.asc())
+        )
+    ).scalars().all()
+    total_users = len(ordered_ids)
+    if not total_users:
+        return None
+
+    rank = next((idx + 1 for idx, uid in enumerate(ordered_ids) if uid == user.id), None)
+    if rank is None:
+        return None
+
+    since = datetime.utcnow() - timedelta(hours=24)
+    trend_q = (
+        select(func.sum(Bet.points_earned))
+        .where(Bet.user_id == user.id, Bet.created_at >= since, Bet.points_earned > 0)
+    )
+    earned_24h = (await db.execute(trend_q)).scalar() or 0
+
+    recent_bets = (
+        await db.execute(
+            select(Bet.points_earned)
+            .where(Bet.user_id == user.id, Bet.points_earned.is_not(None))
+            .order_by(Bet.created_at.desc())
+        )
+    ).scalars().all()
+
+    streak_loss = 0
+    for earned in recent_bets:
+        if earned == 0:
+            streak_loss += 1
+        else:
+            break
+
+    winning_bets = (
+        await db.execute(
+            select(Bet.match_id, Bet.choice)
+            .where(Bet.user_id == user.id, Bet.points_earned > 0)
+        )
+    ).all()
+    is_contrarian = False
+    for bet in winning_bets:
+        counts = (
+            await db.execute(
+                select(Bet.choice, func.count(Bet.id).label("cnt"))
+                .where(Bet.match_id == bet.match_id)
+                .group_by(Bet.choice)
+            )
+        ).all()
+        if not counts:
+            continue
+        counts_map = {row.choice: row.cnt for row in counts}
+        my_cnt = counts_map.get(bet.choice, 0)
+        all_cnts = list(counts_map.values())
+        if all_cnts and my_cnt == min(all_cnts) and my_cnt < max(all_cnts):
+            is_contrarian = True
+            break
+
+    return _user_badge_payload(
+        rank=rank,
+        total_users=total_users,
+        streak_loss=streak_loss,
+        is_contrarian=is_contrarian,
+    )
 
 
 def _recharge_request_response(request: PointRechargeRequest, user: Optional[User] = None, admin: Optional[User] = None) -> dict:

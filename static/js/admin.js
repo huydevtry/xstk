@@ -32,7 +32,7 @@ function safeCssColor(value) {
 }
 
 function formatCoins(value) {
-    return `${Number(value || 0).toLocaleString()}d`;
+    return `${Number(value || 0).toLocaleString()}đ`;
 }
 
 function renderMiniAvatar({ avatar_url, avatar_color, initials }) {
