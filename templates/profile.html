@@ -147,6 +147,35 @@
             </div>
         </div>
 
+        <section id="default-taunt-section" class="hidden bg-white border border-slate-200 rounded-2xl p-4 mb-6 shadow-sm">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <h2 class="text-sm font-bold uppercase tracking-wide text-slate-500">Cau gay mac dinh</h2>
+                    <p class="text-xs text-slate-500 mt-1">Se tu dong dien vao lenh cuoc moi, nhung ban van sua rieng tung tran duoc.</p>
+                </div>
+                <button
+                    id="save-default-taunt"
+                    type="button"
+                    class="flex-shrink-0 rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-sky-500"
+                >
+                    Luu
+                </button>
+            </div>
+            <div class="mt-3">
+                <textarea
+                    id="default-taunt-input"
+                    rows="2"
+                    maxlength="30"
+                    class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-300 focus:bg-white"
+                    placeholder="Vi du: Chot cua nay roi, ngoi xem ti so"
+                ></textarea>
+            </div>
+            <div class="mt-2 flex items-center justify-between gap-3 text-xs">
+                <div id="default-taunt-status" class="text-slate-500"></div>
+                <div class="font-semibold text-slate-400"><span id="default-taunt-count">0</span>/30</div>
+            </div>
+        </section>
+
         <!-- <section id="recharge-section" class="bg-white border border-slate-200 rounded-2xl p-4 mb-6 shadow-sm">
             <div class="flex items-center justify-between gap-3">
                 <div>

@@ -1,0 +1,160 @@
+.bet-btn-group {
+    gap: 8px;
+    align-items: flex-end;
+}
+
+.bet-choice-block {
+    gap: 6px;
+}
+
+.bet-btn,
+.bet-choice-caption {
+    min-height: 42px;
+    padding: 6px 4px;
+    border-radius: 10px;
+}
+
+.bet-btn .bet-label,
+.bet-choice-caption {
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.bet-choice-caption {
+    width: 100%;
+    border: 1.5px solid #e2e8f0;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    color: #475569;
+    text-align: center;
+}
+
+.avatar-stack-row {
+    min-height: 26px;
+}
+
+.bet-placed-badge {
+    margin-bottom: 8px;
+}
+
+.live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: #ef4444;
+    animation: tauntLivePulse 1.2s ease-in-out infinite;
+}
+
+@keyframes tauntLivePulse {
+    0%, 100% { transform: scale(0.9); opacity: 0.75; }
+    50% { transform: scale(1.1); opacity: 1; }
+}
+
+.taunt-slot {
+    width: 100%;
+}
+
+.taunt-slot.has-taunt {
+    min-height: 52px;
+}
+
+.taunt-bubble {
+    height: 48px;
+    width: 100%;
+    border-radius: 14px;
+    border: 1px solid #fbcfe8;
+    background:
+        radial-gradient(circle at top left, rgba(251, 207, 232, 0.55), transparent 40%),
+        linear-gradient(180deg, #fff7fb 0%, #fff1f6 100%);
+    padding: 6px 8px;
+    text-align: left;
+    box-shadow: 0 6px 16px rgba(244, 114, 182, 0.12);
+}
+
+.taunt-name {
+    font-size: 0.6rem;
+    font-weight: 800;
+    color: #be185d;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.taunt-text {
+    margin-top: 2px;
+    font-size: 0.73rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #4c0519;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.stake-chip {
+    border-radius: 999px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
+    font-size: 0.84rem;
+    font-weight: 700;
+    padding: 6px 12px;
+    transition: all 0.15s ease;
+}
+
+.stake-chip:hover {
+    border-color: #7dd3fc;
+    color: #0369a1;
+}
+
+.stake-taunt-input {
+    width: 100%;
+    border-radius: 12px;
+    border: 1.5px solid #cbd5e1;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 0.86rem;
+    font-weight: 600;
+    padding: 10px 12px;
+    resize: none;
+    outline: none;
+}
+
+.stake-taunt-input:focus {
+    border-color: #0ea5e9;
+}
+
+@media (max-width: 480px) {
+    .bet-btn-group {
+        gap: 6px;
+    }
+
+    .bet-btn,
+    .bet-choice-caption {
+        min-height: 40px;
+        padding: 6px 2px;
+    }
+
+    .bet-btn .bet-label,
+    .bet-choice-caption {
+        font-size: 0.62rem;
+    }
+
+    .taunt-slot.has-taunt {
+        min-height: 48px;
+    }
+
+    .taunt-bubble {
+        height: 44px;
+        padding: 5px 7px;
+    }
+
+    .taunt-name {
+        font-size: 0.56rem;
+    }
+
+    .taunt-text {
+        font-size: 0.68rem;
+    }
+}

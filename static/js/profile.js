@@ -615,3 +615,124 @@ applyProfileUI = function applyProfileUIClean(data) {
     const rechargeSection = document.getElementById("recharge-section");
     if (rechargeSection) rechargeSection.classList.toggle("hidden", !editable || !pointsEnabled);
 };
+
+function setDefaultTauntStatus(message, tone = "neutral") {
+    const statusEl = document.getElementById("default-taunt-status");
+    if (!statusEl) return;
+    statusEl.textContent = message || "";
+    statusEl.className = "text-xs";
+    if (tone === "error") {
+        statusEl.classList.add("text-rose-600");
+    } else if (tone === "success") {
+        statusEl.classList.add("text-emerald-600");
+    } else {
+        statusEl.classList.add("text-slate-500");
+    }
+}
+
+function updateDefaultTauntCount() {
+    const input = document.getElementById("default-taunt-input");
+    const count = document.getElementById("default-taunt-count");
+    if (!input || !count) return;
+    count.textContent = String(input.value.length);
+    count.parentElement?.classList.toggle("text-rose-500", input.value.length > 27);
+    count.parentElement?.classList.toggle("text-slate-400", input.value.length <= 27);
+}
+
+function syncDefaultTauntEditor(data) {
+    const section = document.getElementById("default-taunt-section");
+    const input = document.getElementById("default-taunt-input");
+    const saveBtn = document.getElementById("save-default-taunt");
+    if (!section || !input || !saveBtn) return;
+
+    const editable = data?.can_edit !== false;
+    section.classList.toggle("hidden", !editable);
+    input.disabled = !editable;
+    saveBtn.disabled = !editable;
+
+    if (!editable) return;
+
+    input.value = data?.default_taunt || "";
+    updateDefaultTauntCount();
+    setDefaultTauntStatus("");
+}
+
+function initDefaultTauntEditor() {
+    const section = document.getElementById("default-taunt-section");
+    const input = document.getElementById("default-taunt-input");
+    const saveBtn = document.getElementById("save-default-taunt");
+    if (!section || !input || !saveBtn || saveBtn.dataset.bound === "1") return;
+
+    saveBtn.dataset.bound = "1";
+    input.addEventListener("input", () => {
+        updateDefaultTauntCount();
+        setDefaultTauntStatus("");
+    });
+
+    saveBtn.addEventListener("click", async () => {
+        if (_profileData?.can_edit === false) return;
+        if (input.value.length > 30) {
+            setDefaultTauntStatus("Toi da 30 ky tu.", "error");
+            return;
+        }
+
+        saveBtn.disabled = true;
+        const oldText = saveBtn.textContent;
+        saveBtn.textContent = "Dang luu...";
+        setDefaultTauntStatus("");
+
+        try {
+            const res = await fetch("/api/v1/me/update", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ default_taunt: input.value }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.detail || `Loi ${res.status}`);
+
+            _profileData = { ..._profileData, ...data };
+            input.value = _profileData.default_taunt || "";
+            updateDefaultTauntCount();
+            setDefaultTauntStatus("Da luu cau gay mac dinh.", "success");
+        } catch (err) {
+            setDefaultTauntStatus(err.message || "Khong the luu cau gay.", "error");
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = oldText;
+        }
+    });
+
+    updateDefaultTauntCount();
+}
+
+document.addEventListener("DOMContentLoaded", initDefaultTauntEditor);
+
+applyProfileUI = function applyProfileUIWithTaunt(data) {
+    const shortName = data.display_name || data.email.split("@")[0];
+    const safeShortName = escapeHtml(shortName);
+    const badgeHtml = renderBadge(data.badge);
+
+    document.getElementById("profile-name").textContent = shortName;
+    document.getElementById("profile-email").textContent = data.email;
+    document.getElementById("profile-points").textContent = data.total_points.toLocaleString();
+
+    document.getElementById("user-info").innerHTML =
+        `${headerAvatarHtml(data)}
+         <span class="font-semibold text-slate-900">${safeShortName}</span>
+         &nbsp;|&nbsp; <span class="text-[#D3af37] font-bold">${data.total_points.toLocaleString()}</span>d`;
+
+    renderAvatar(data);
+
+    const badgeHost = document.getElementById("profile-badge");
+    if (badgeHost) badgeHost.innerHTML = badgeHtml;
+
+    const editable = data.can_edit !== false;
+    const pointsEnabled = Boolean(data.features?.points_enabled);
+    document.getElementById("open-avatar-modal")?.classList.toggle("hidden", !editable);
+    document.getElementById("open-name-modal")?.classList.toggle("hidden", !editable);
+    const rechargeSection = document.getElementById("recharge-section");
+    if (rechargeSection) rechargeSection.classList.toggle("hidden", !editable || !pointsEnabled);
+
+    initDefaultTauntEditor();
+    syncDefaultTauntEditor(data);
+};

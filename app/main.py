@@ -41,7 +41,9 @@ templates = Jinja2Templates(directory="templates")
 ASSET_VERSION = str(
     max(
         int(Path("static/css/style.css").stat().st_mtime),
+        int(Path("static/css/betting-taunt.css").stat().st_mtime),
         int(Path("static/js/app.js").stat().st_mtime),
+        int(Path("static/js/app-taunt.js").stat().st_mtime),
         int(Path("static/js/admin.js").stat().st_mtime),
         int(Path("static/js/profile.js").stat().st_mtime),
     )
@@ -66,10 +68,40 @@ OUTCOME_LABELS = {
 MATCH_DEFAULT_DURATION = timedelta(hours=2)
 APP_TIMEZONE = ZoneInfo("Asia/Ho_Chi_Minh")
 match_status_sync_task: asyncio.Task | None = None
+MAX_PROFILE_NAME_LENGTH = 30
+MAX_TAUNT_LENGTH = 30
 
 
 def _format_coins(value: int) -> str:
     return f"{int(value):,}d"
+
+
+def _provided_fields(payload: BaseModel) -> set[str]:
+    fields = getattr(payload, "model_fields_set", None)
+    if fields is not None:
+        return set(fields)
+    legacy_fields = getattr(payload, "__fields_set__", set())
+    return set(legacy_fields)
+
+
+def _normalize_display_name(value: Optional[str]) -> str:
+    name = (value or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Ten hien thi khong duoc de trong.")
+    if len(name) > MAX_PROFILE_NAME_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Ten hien thi toi da {MAX_PROFILE_NAME_LENGTH} ky tu.")
+    return name
+
+
+def _normalize_optional_taunt(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if len(text) > MAX_TAUNT_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Cau gay toi da {MAX_TAUNT_LENGTH} ky tu.")
+    return text
 
 
 def _local_now_naive() -> datetime:
@@ -319,6 +351,20 @@ async def startup_event():
             if column_name not in match_column_names:
                 await conn.exec_driver_sql(ddl)
 
+        user_columns = (
+            await conn.exec_driver_sql("PRAGMA table_info(users)")
+        ).fetchall()
+        user_column_names = {row[1] for row in user_columns}
+        if "default_taunt" not in user_column_names:
+            await conn.exec_driver_sql("ALTER TABLE users ADD COLUMN default_taunt VARCHAR")
+
+        bet_columns = (
+            await conn.exec_driver_sql("PRAGMA table_info(bets)")
+        ).fetchall()
+        bet_column_names = {row[1] for row in bet_columns}
+        if "taunt_text" not in bet_column_names:
+            await conn.exec_driver_sql("ALTER TABLE bets ADD COLUMN taunt_text VARCHAR")
+
         await conn.exec_driver_sql(
             """
             UPDATE matches
@@ -420,6 +466,7 @@ class BetPayload(BaseModel):
     match_id: int
     choice: Literal["HOME", "DRAW", "AWAY"]
     stake: int = Field(..., ge=1)
+    taunt_text: Optional[str] = None
 
 class ResolvePayload(BaseModel):
     home_score: int = Field(..., ge=0)
@@ -516,6 +563,8 @@ async def get_public_user_profile(
     payload = await _build_profile_payload(target_user, db=db, include_badge=True)
     payload["is_self"] = target_user.id == current_user.id
     payload["can_edit"] = payload["is_self"]
+    if not payload["is_self"]:
+        payload["default_taunt"] = None
     return payload
 
 
@@ -562,8 +611,9 @@ async def get_public_settings(db: AsyncSession = Depends(get_db)):
 # Dùng POST thay vì PATCH vì Cloudflare Access Gateway chặn PATCH/PUT/DELETE
 class UpdateProfilePayload(BaseModel):
     display_name: Optional[str] = None
+    default_taunt: Optional[str] = None
 
-@app.post("/api/v1/me/update")
+@app.post("/api/v1/me/update-legacy")
 async def update_me(
     payload: UpdateProfilePayload,
     user: User = Depends(get_current_user),
@@ -587,6 +637,33 @@ async def update_me(
         "avatar_url": user.avatar_url,
         "avatar_color": user.avatar_color or "#6366f1",
         "initials": (display_name[:2]).upper(),
+    }
+
+
+@app.post("/api/v1/me/update")
+async def update_me_v2(
+    payload: UpdateProfilePayload,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    fields = _provided_fields(payload)
+    if "display_name" in fields:
+        user.display_name = _normalize_display_name(payload.display_name)
+    if "default_taunt" in fields:
+        user.default_taunt = _normalize_optional_taunt(payload.default_taunt)
+
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+
+    display_name = _user_display_name(user)
+    return {
+        "email": user.email,
+        "display_name": display_name,
+        "avatar_url": user.avatar_url,
+        "avatar_color": user.avatar_color or "#6366f1",
+        "initials": _user_initials(user),
+        "default_taunt": user.default_taunt,
     }
 
 
@@ -798,7 +875,7 @@ async def get_upcoming_matches(db: AsyncSession = Depends(get_db)):
 
 
 # POST /api/v1/bets — Đặt cược (Transaction)
-@app.post("/api/v1/bets", status_code=201)
+@app.post("/api/v1/bets-legacy", status_code=201)
 async def place_bet(
     payload: BetPayload,
     user: User = Depends(get_current_user),
@@ -868,7 +945,7 @@ async def place_bet(
 
 
 # ─── GET /api/v1/matches/{match_id}/bets — Avatar Stack ──────────────────────
-@app.get("/api/v1/matches/{match_id}/bets")
+@app.get("/api/v1/matches/{match_id}/bets-legacy")
 async def get_match_bets(match_id: int, db: AsyncSession = Depends(get_db)):
     """Trả về danh sách người đặt cược mỗi cửa (HOME/DRAW/AWAY) cho avatar stack."""
     query = (
@@ -2141,3 +2218,136 @@ async def resolve_match(
         "total_pool": total_pool,
         "refunded": refunded,
     }
+
+
+async def _build_profile_payload(
+    user: User,
+    db: Optional[AsyncSession] = None,
+    *,
+    include_badge: bool = True,
+) -> dict:
+    payload = {
+        "id": str(user.id),
+        "email": user.email,
+        "display_name": _user_display_name(user),
+        "default_taunt": user.default_taunt,
+        "total_points": user.total_points,
+        "avatar_url": user.avatar_url,
+        "avatar_color": user.avatar_color or "#6366f1",
+        "initials": _user_initials(user),
+        "is_admin": user.email.strip().lower() in ADMIN_EMAILS,
+        "is_self": True,
+        "can_edit": True,
+    }
+    if db is not None:
+        payload["features"] = await _get_feature_settings(db)
+        if include_badge:
+            payload["badge"] = await _build_user_badge_for_profile(user, db)
+    return payload
+
+
+@app.post("/api/v1/bets", status_code=201)
+async def place_bet_v2(
+    payload: BetPayload,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _sync_match_statuses(db)
+
+    match = (
+        await db.execute(select(Match).where(Match.id == payload.match_id))
+    ).scalars().first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Tran dau khong ton tai.")
+    if match.status != MatchStatus.upcoming:
+        raise HTTPException(status_code=400, detail="Tran nay da khoa dat cuoc.")
+
+    min_stake = await _get_match_min_stake(db, payload.match_id)
+    if min_stake is not None and payload.stake < min_stake:
+        raise HTTPException(
+            status_code=400,
+            detail=f"So diem toi thieu cho tran nay la {_format_coins(min_stake)}.",
+        )
+    if user.total_points < payload.stake:
+        raise HTTPException(status_code=400, detail="So diem khong du.")
+
+    taunt_text = _normalize_optional_taunt(payload.taunt_text)
+
+    existing = (
+        await db.execute(
+            select(Bet).where(Bet.user_id == user.id, Bet.match_id == payload.match_id)
+        )
+    ).scalars().first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Ban da dat cuoc tran nay roi.")
+
+    try:
+        balance_update = await db.execute(
+            update(User)
+            .where(User.id == user.id, User.total_points >= payload.stake)
+            .values(total_points=User.total_points - payload.stake)
+            .execution_options(synchronize_session=False)
+        )
+        if balance_update.rowcount != 1:
+            await db.rollback()
+            raise HTTPException(status_code=400, detail="So diem khong du.")
+
+        bet = Bet(
+            user_id=user.id,
+            match_id=payload.match_id,
+            choice=payload.choice,
+            stake=payload.stake,
+            taunt_text=taunt_text,
+            points_earned=None,
+        )
+        db.add(bet)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Ban da dat cuoc tran nay roi.")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    await db.refresh(user)
+    return {
+        "message": "Dat cuoc thanh cong.",
+        "remaining_points": user.total_points,
+        "min_stake": min_stake,
+        "taunt_text": taunt_text,
+    }
+
+
+@app.get("/api/v1/matches/{match_id}/bets")
+async def get_match_bets_v2(match_id: int, db: AsyncSession = Depends(get_db)):
+    query = (
+        select(Bet, User)
+        .join(User, Bet.user_id == User.id)
+        .where(Bet.match_id == match_id)
+        .order_by(Bet.created_at.desc())
+    )
+    rows = (await db.execute(query)).all()
+
+    result = {"HOME": [], "DRAW": [], "AWAY": []}
+    choice_counts = {"HOME": 0, "DRAW": 0, "AWAY": 0}
+
+    for row in rows:
+        choice_counts[row.Bet.choice] = choice_counts.get(row.Bet.choice, 0) + 1
+
+    for row in rows:
+        my_count = choice_counts.get(row.Bet.choice, 0)
+        other_max = max(v for k, v in choice_counts.items() if k != row.Bet.choice)
+        is_lone_wolf = my_count == 1 and other_max >= 3
+        result[row.Bet.choice].append(
+            {
+                **_user_avatar_payload(row.User),
+                "stake": row.Bet.stake,
+                "taunt_text": row.Bet.taunt_text,
+                "created_at": row.Bet.created_at.isoformat() if row.Bet.created_at else None,
+                "is_lone_wolf": is_lone_wolf,
+            }
+        )
+
+    return result
