@@ -5,6 +5,8 @@
 
 .bet-choice-block {
     gap: 6px;
+    align-items: stretch;
+    min-width: 0;
 }
 
 .bet-btn,
@@ -53,43 +55,53 @@
 
 .taunt-slot {
     width: 100%;
+    min-width: 0;
+    display: flex;
+    align-items: flex-end;
 }
 
 .taunt-slot.has-taunt {
-    min-height: 52px;
+    min-height: 62px;
+    margin-bottom: 2px;
 }
 
 .taunt-bubble {
-    height: 48px;
+    min-height: 56px;
+    height: auto;
     width: 100%;
-    border-radius: 14px;
-    border: 1px solid #fbcfe8;
+    border-radius: 16px;
+    border: 1px solid #c5dbeb;
     background:
-        radial-gradient(circle at top left, rgba(251, 207, 232, 0.55), transparent 40%),
-        linear-gradient(180deg, #fff7fb 0%, #fff1f6 100%);
-    padding: 6px 8px;
+        radial-gradient(circle at top left, rgba(202, 227, 245, 0.85), transparent 42%),
+        linear-gradient(180deg, #f8fcff 0%, #edf6fc 100%);
+    padding: 7px 9px;
     text-align: left;
-    box-shadow: 0 6px 16px rgba(244, 114, 182, 0.12);
+    box-shadow: 0 10px 24px rgba(116, 155, 190, 0.16);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    gap: 3px;
 }
 
 .taunt-name {
     font-size: 0.6rem;
     font-weight: 800;
-    color: #be185d;
+    color: #2a6e9b;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .taunt-text {
-    margin-top: 2px;
-    font-size: 0.73rem;
+    font-size: 0.72rem;
     font-weight: 700;
-    line-height: 1.2;
-    color: #4c0519;
-    white-space: nowrap;
+    line-height: 1.28;
+    color: #1f3f58;
+    white-space: normal;
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: unset;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
 
 .stake-chip {
@@ -142,12 +154,13 @@
     }
 
     .taunt-slot.has-taunt {
-        min-height: 48px;
+        min-height: 58px;
     }
 
     .taunt-bubble {
-        height: 44px;
-        padding: 5px 7px;
+        min-height: 52px;
+        padding: 6px 8px;
+        border-radius: 14px;
     }
 
     .taunt-name {
@@ -155,6 +168,12 @@
     }
 
     .taunt-text {
-        font-size: 0.68rem;
+        font-size: 0.66rem;
+        line-height: 1.24;
+    }
+
+    .stake-chip {
+        font-size: 0.78rem;
+        padding: 6px 10px;
     }
 }

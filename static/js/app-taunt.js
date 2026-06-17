@@ -198,12 +198,12 @@
             </span>` : "";
 
         return `
-            <div class="bg-white border border-slate-200 hover:border-sky-300 rounded-xl p-4 shadow-sm transition duration-200 mb-3 last:mb-0">
+            <div class="bg-white border border-slate-200 hover:border-sky-300 rounded-2xl p-3 sm:p-4 shadow-sm transition duration-200 mb-3 last:mb-0">
                 <div class="flex items-center justify-between mb-2">
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2 flex-wrap">
                         ${liveBadge}
-                        <span class="text-xs bg-sky-50 text-sky-700 font-mono font-semibold px-2 py-1 rounded border border-sky-100">${timeStr}</span>
-                        <span class="text-xs bg-rose-50 text-rose-700 font-mono font-semibold px-2 py-1 rounded border border-rose-100">KT ${endTimeStr}</span>
+                        <span class="text-xs bg-sky-50 text-sky-700 font-mono font-semibold px-2 py-1 rounded-full border border-sky-100">${timeStr}</span>
+                        <span class="text-xs bg-rose-50 text-rose-700 font-mono font-semibold px-2 py-1 rounded-full border border-rose-100">KT ${endTimeStr}</span>
                     </div>
                     <button type="button"
                         class="inline-flex items-center gap-1 text-xs bg-white text-slate-600 border border-slate-200 hover:border-sky-300 hover:text-sky-700 px-2.5 py-1 rounded-full transition-colors shadow-sm"
