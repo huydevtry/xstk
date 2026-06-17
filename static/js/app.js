@@ -1039,15 +1039,15 @@ function renderMatchCard(match) {
         : `
             <div class="bet-btn-group" id="btn-group-${id}">
                 <div class="bet-choice-block">
-                    <div class="px-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">Nha</div>
+                    <div class="px-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">NHÀ</div>
                     <div class="avatar-stack-row" id="avatars-home-${id}"></div>
                 </div>
                 <div class="bet-choice-block">
-                    <div class="px-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">Hoa</div>
+                    <div class="px-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">HÒA</div>
                     <div class="avatar-stack-row" id="avatars-draw-${id}"></div>
                 </div>
                 <div class="bet-choice-block">
-                    <div class="px-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">Khach</div>
+                    <div class="px-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">KHÁCH</div>
                     <div class="avatar-stack-row" id="avatars-away-${id}"></div>
                 </div>
             </div>
@@ -1146,7 +1146,7 @@ function renderStakePanel(matchId, choice, totalPool, stakesOnChoice, minStake =
         <div class="stake-panel">
             <label>So diem dat cuoc</label>
             <div class="mt-2 text-xs text-slate-500">
-                ${effectiveMin > 1 ? `Toi thieu hien tai: ${formatCoins(effectiveMin)}.` : "Chua co ai dat, ban duoc tu chon muc cuoc."}
+                ${effectiveMin > 1 ? `Toi thieu hien tai: ${formatCoins(effectiveMin)}.` : "Chưa ai lên thuyền. Bạn có thể mở bát tự do."}
             </div>
             <div class="mt-3 flex flex-wrap gap-2">
                 ${chips}
@@ -1158,10 +1158,10 @@ function renderStakePanel(matchId, choice, totalPool, stakesOnChoice, minStake =
                     oninput="syncStake(${matchId}, ${totalPool}, ${stakesOnChoice}, this.value)">
             </div>
             <div class="est-return" id="est-${matchId}">
-                Uoc tinh nhan: <strong>${formatCoins(estimateReward(totalPool, stakesOnChoice, defaultStake))}</strong>
+                Ước tính nhận: <strong>${formatCoins(estimateReward(totalPool, stakesOnChoice, defaultStake))}</strong>
             </div>
             <button class="confirm-bet-btn" id="confirm-btn-${matchId}" onclick="confirmBet(${matchId})">
-                Xac nhan dat cuoc
+                Xuống xác
             </button>
         </div>`;
 }
@@ -1179,7 +1179,7 @@ window.syncStake = function(matchId, totalPool, stakesOnChoice, rawVal) {
     input.value = value;
     const est = estimateReward(totalPool, stakesOnChoice, value);
     const estEl = document.getElementById(`est-${matchId}`);
-    if (estEl) estEl.innerHTML = `Uoc tinh nhan: <strong>${formatCoins(est)}</strong>`;
+    if (estEl) estEl.innerHTML = `Ước tính nhận: <strong>${formatCoins(est)}</strong>`;
 };
 
 window.confirmBet = async function(matchId) {
@@ -1190,17 +1190,17 @@ window.confirmBet = async function(matchId) {
     const effectiveMin = getEffectiveMinStake(sel.minStake);
     const stakeVal = parseInt(input?.value || "0", 10) || 0;
     if (stakeVal < effectiveMin) {
-        showToast(`So diem toi thieu la ${formatCoins(effectiveMin)}.`, "error");
+        showToast(`Số điểm tối thiểu là ${formatCoins(effectiveMin)}.`, "error");
         return;
     }
     if (currentUser && stakeVal > currentUser.total_points) {
-        showToast("So diem khong du.", "error");
+        showToast("Số điểm không đủ.", "error");
         return;
     }
 
     const btn = document.getElementById(`confirm-btn-${matchId}`);
     btn.disabled = true;
-    btn.textContent = "Dang xu ly...";
+    btn.textContent = "Đang xử...";
 
     try {
         const res = await fetch("/api/v1/bets", {
@@ -1210,28 +1210,28 @@ window.confirmBet = async function(matchId) {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-            showToast(data.detail || "Dat cuoc that bai.", "error");
+            showToast(data.detail || "Đặt thất bại.", "error");
             btn.disabled = false;
-            btn.textContent = "Xac nhan dat cuoc";
+            btn.textContent = "Xuống xác";
             return;
         }
 
         placedBets.add(matchId);
         updateDisplayedPoints(data.remaining_points);
-        showToast(`Dat cuoc thanh cong. Con lai ${formatCoins(data.remaining_points)}.`, "success");
+        showToast(`Đóng họ thành công. Còn lại ${formatCoins(data.remaining_points)}.`, "success");
         matchDetailCache.delete(matchId);
 
         const stakePanel = document.getElementById(`stake-panel-${matchId}`);
         const btnGroup = document.getElementById(`btn-group-${matchId}`);
         if (stakePanel) stakePanel.innerHTML = "";
-        if (btnGroup) btnGroup.outerHTML = `<div class="bet-placed-badge">Da dat cuoc cho tran nay</div>`;
+        if (btnGroup) btnGroup.outerHTML = `<div class="bet-placed-badge">Đã lên thuyền</div>`;
 
         fetchAvatarStack(matchId);
         fetchUpcomingMatches();
         startTicker();
     } catch (e) {
-        showToast("Loi ket noi. Vui long thu lai.", "error");
+        showToast(" lỗi kết nối. Vui lòng thử lại.", "error");
         btn.disabled = false;
-        btn.textContent = "Xac nhan dat cuoc";
+        btn.textContent = "Xuống xác";
     }
 };
