@@ -8,6 +8,7 @@ from sqlalchemy.future import select
 from sqlalchemy import func, case, desc, update
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
 import logging
@@ -63,11 +64,17 @@ OUTCOME_LABELS = {
 }
 
 MATCH_DEFAULT_DURATION = timedelta(hours=2)
+APP_TIMEZONE = ZoneInfo("Asia/Ho_Chi_Minh")
 match_status_sync_task: asyncio.Task | None = None
 
 
 def _format_coins(value: int) -> str:
     return f"{int(value):,}d"
+
+
+def _local_now_naive() -> datetime:
+    """Return app-local time as naive datetime for match schedule comparisons."""
+    return datetime.now(APP_TIMEZONE).replace(tzinfo=None)
 
 
 def _render_inline_markdown(text: str) -> str:
@@ -236,7 +243,7 @@ def _match_effective_end_time(match: Match) -> datetime:
 
 async def _sync_match_statuses(db: AsyncSession) -> int:
     """Promote matches based on start/end times."""
-    now = datetime.utcnow()
+    now = _local_now_naive()
     rows = (await db.execute(
         select(Match).where(Match.status != MatchStatus.finished)
     )).scalars().all()
@@ -1697,7 +1704,7 @@ async def approve_recharge_request(
         raise HTTPException(status_code=409, detail="Yeu cau nay da duoc xu ly.")
 
     try:
-        approved_at = datetime.utcnow()
+        approved_at = _local_now_naive()
         status_update = await db.execute(
             update(PointRechargeRequest)
             .where(
@@ -2085,7 +2092,7 @@ async def resolve_match(
                     db.add(user_q)
 
         match.status = MatchStatus.finished
-        match.resolved_at = datetime.utcnow()
+        match.resolved_at = _local_now_naive()
         db.add(match)
         await db.commit()
 
