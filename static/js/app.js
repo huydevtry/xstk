@@ -1004,7 +1004,7 @@ function renderMatchCard(match) {
     const homeIconSrc = safeImageSrc(home_icon);
     const awayIconSrc = safeImageSrc(away_icon);
     const minStake = match.min_stake;
-    const minStakeHint = minStake ? `Toi thieu ${formatCoins(minStake)}` : "Mo keo tu do";
+    const minStakeHint = minStake ? `Toi thieu ${formatCoins(minStake)}` : "Mở bát tự do";
 
     const hcSign = handicap > 0 ? "+" : "";
     const hcClass = handicap >= 0 ? "handicap-pos" : "handicap-neg";
@@ -1017,19 +1017,19 @@ function renderMatchCard(match) {
             <div class="bet-btn-group" id="btn-group-${id}">
                 <div class="bet-choice-block">
                     <button class="bet-btn w-full" id="bet-home-${id}" onclick="selectChoice(${id}, 'HOME', ${total_pool}, ${stakes_home}, '${status}', ${minStake ?? "null"})">
-                        <span class="bet-label">Nha</span>
+                        <span class="bet-label">NHÀ</span>
                     </button>
                     <div class="avatar-stack-row" id="avatars-home-${id}"></div>
                 </div>
                 <div class="bet-choice-block">
                     <button class="bet-btn w-full" id="bet-draw-${id}" onclick="selectChoice(${id}, 'DRAW', ${total_pool}, ${stakes_draw}, '${status}', ${minStake ?? "null"})">
-                        <span class="bet-label">Hoa</span>
+                        <span class="bet-label">HÒA</span>
                     </button>
                     <div class="avatar-stack-row" id="avatars-draw-${id}"></div>
                 </div>
                 <div class="bet-choice-block">
                     <button class="bet-btn w-full" id="bet-away-${id}" onclick="selectChoice(${id}, 'AWAY', ${total_pool}, ${stakes_away}, '${status}', ${minStake ?? "null"})">
-                        <span class="bet-label">Khach</span>
+                        <span class="bet-label">KHÁCH</span>
                     </button>
                     <div class="avatar-stack-row" id="avatars-away-${id}"></div>
                 </div>
@@ -1085,13 +1085,13 @@ function renderMatchCard(match) {
                 <div class="w-2/5 text-center flex flex-col items-center">
                     <div class="flex items-center justify-center mb-1">${homeIconHtml}</div>
                     <p class="text-sm font-bold text-slate-900 truncate w-full">${homeTeam} ${hcBadge}</p>
-                    <span class="text-xs text-slate-500 block mt-0.5">Chu nha</span>
+                    <span class="text-xs text-slate-500 block mt-0.5">Chủ nhà</span>
                 </div>
                 <div class="w-1/5 text-center text-slate-400 font-black text-sm">VS</div>
                 <div class="w-2/5 text-center flex flex-col items-center">
                     <div class="flex items-center justify-center mb-1">${awayIconHtml}</div>
                     <p class="text-sm font-bold text-slate-900 truncate w-full">${awayTeam}</p>
-                    <span class="text-xs text-slate-500 block mt-0.5">Khach</span>
+                    <span class="text-xs text-slate-500 block mt-0.5">Khách</span>
                 </div>
             </div>
 
