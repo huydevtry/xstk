@@ -563,6 +563,7 @@ async def get_public_user_profile(
     payload["is_self"] = target_user.id == current_user.id
     payload["can_edit"] = payload["is_self"]
     if not payload["is_self"]:
+        payload["email"] = None
         payload["default_taunt"] = None
     return payload
 

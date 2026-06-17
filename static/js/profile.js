@@ -628,13 +628,19 @@ function initDefaultTauntEditor() {
 document.addEventListener("DOMContentLoaded", initDefaultTauntEditor);
 
 function applyProfileUI(data) {
-    const shortName = data.display_name || data.email.split("@")[0];
+    const fallbackName = data.email ? data.email.split("@")[0] : (data.initials || "User");
+    const shortName = data.display_name || fallbackName;
     const safeShortName = escapeHtml(shortName);
     const badgeHtml = renderBadge(data.badge);
+    const emailEl = document.getElementById("profile-email");
+    const canViewEmail = Boolean(data.email) && data.can_edit !== false;
 
     document.getElementById("profile-name").textContent = shortName;
-    document.getElementById("profile-email").textContent = data.email;
     document.getElementById("profile-points").textContent = data.total_points.toLocaleString();
+    if (emailEl) {
+        emailEl.textContent = canViewEmail ? data.email : "";
+        emailEl.classList.toggle("hidden", !canViewEmail);
+    }
 
     document.getElementById("user-info").innerHTML =
         `${headerAvatarHtml(data)}
