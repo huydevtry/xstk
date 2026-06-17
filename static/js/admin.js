@@ -171,7 +171,7 @@ function renderOverview() {
         { label: "Tổng user", value: formatNumber(state.overview.total_users), tone: "text-emerald-300" },
         { label: "Tổng điểm", value: formatCoins(state.overview.total_points), tone: "text-amber-300" },
         { label: "Trận đang mở", value: formatNumber(state.overview.upcoming_matches), tone: "text-sky-300" },
-        { label: "Lượt cược", value: formatNumber(state.overview.total_bets), tone: "text-pink-300" },
+        { label: "Lịch sử báo nhà", value: formatNumber(state.overview.total_bets), tone: "text-pink-300" },
     ];
 
     document.getElementById("overview-metrics").innerHTML = metrics.map(metric => `
@@ -202,7 +202,7 @@ function renderOverviewUsers() {
                 </div>
                 <div class="text-right">
                     <div class="text-sm font-bold text-amber-300">${formatCoins(user.total_points)}</div>
-                    <div class="text-[11px] text-slate-500">${user.bet_count} lượt cược</div>
+                    <div class="text-[11px] text-slate-500">${user.bet_count} Lịch sử báo nhà</div>
                 </div>
             </div>
         </div>
@@ -364,7 +364,7 @@ function renderUsers() {
                             <div class="mt-2 text-lg font-black text-amber-300">${formatCoins(user.total_points)}</div>
                         </div>
                         <div class="rounded-2xl border border-slate-800 bg-slate-950/55 px-3 py-3">
-                            <div class="text-[11px] uppercase tracking-[0.16em] text-slate-500">Lượt cược</div>
+                            <div class="text-[11px] uppercase tracking-[0.16em] text-slate-500">Lịch sử báo nhà</div>
                             <div class="mt-2 text-lg font-black text-emerald-300">${formatNumber(user.bet_count)}</div>
                         </div>
                         <div class="rounded-2xl border border-slate-800 bg-slate-950/55 px-3 py-3">
