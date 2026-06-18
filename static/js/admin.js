@@ -7,6 +7,7 @@ const state = {
     users: [],
     matches: [],
     rechargeRequests: [],
+    pointTransactionsByUser: {},
     userSearch: "",
     activeTab: "overview",
     toastTimer: null,
@@ -76,6 +77,16 @@ function formatNumber(value) {
 
 function formatCoins(value) {
     return `${formatNumber(value)}đ`;
+}
+
+function pointTransactionBadge(item) {
+    const type = String(item?.transaction_type || "");
+    if (type === "legacy_balance_adjustment") return "border-violet-500/30 bg-violet-500/10 text-violet-200";
+    if (type === "admin_adjustment") return "border-amber-500/30 bg-amber-500/10 text-amber-200";
+    if (type === "recharge_approved") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
+    if (type === "bet_reward") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
+    if (type === "bet_refund") return "border-sky-500/30 bg-sky-500/10 text-sky-200";
+    return "border-slate-700 bg-slate-900 text-slate-300";
 }
 
 function getVNDateParts(value) {
@@ -461,7 +472,7 @@ function renderUsers() {
                             <span class="rounded-full border border-slate-700 bg-slate-950/70 px-2.5 py-1">Gần nhất: ${escapeHtml(lastBet)}</span>
                         </div>
                     </div>
-                    <form class="flex flex-col gap-2 sm:flex-row sm:items-center" onsubmit="return saveUserPoints(event, '${escapeHtml(user.id)}')">
+                    <form class="w-full max-w-xl flex flex-col gap-2" onsubmit="return saveUserPoints(event, '${escapeHtml(user.id)}')">
                         <input
                             class="user-points-input w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm font-bold text-amber-200 outline-none transition focus:border-amber-400 sm:w-40"
                             type="number"
@@ -471,10 +482,34 @@ function renderUsers() {
                             value="${Number(user.total_points || 0)}"
                             aria-label="Tổng điểm"
                         >
-                        <button type="submit" class="rounded-2xl bg-amber-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-amber-300">
-                            Lưu điểm
-                        </button>
+                        <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                            <input
+                                class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-sky-500"
+                                type="text"
+                                maxlength="280"
+                                placeholder="Lý do điều chỉnh điểm"
+                                aria-label="Lý do điều chỉnh điểm"
+                            >
+                            <button type="submit" class="rounded-2xl bg-amber-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-amber-300">
+                                Lưu điểm
+                            </button>
+                            <button type="button" class="rounded-2xl border border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:text-white" onclick="toggleUserPointTransactions('${escapeHtml(user.id)}')">
+                                Lịch sử điểm
+                            </button>
+                        </div>
                     </form>
+                </div>
+                <div id="user-point-transactions-${escapeHtml(user.id)}" class="hidden mt-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Point ledger</div>
+                            <div class="mt-1 text-sm font-semibold text-white">Lịch sử giao dịch điểm</div>
+                        </div>
+                        <button type="button" class="rounded-xl border border-slate-700 px-3 py-2 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white" onclick="loadMoreUserPointTransactions('${escapeHtml(user.id)}')">
+                            Xem thêm
+                        </button>
+                    </div>
+                    <div id="user-point-transactions-list-${escapeHtml(user.id)}" class="mt-4 space-y-3"></div>
                 </div>
             </div>
         `;
@@ -484,12 +519,19 @@ function renderUsers() {
 async function saveUserPoints(event, userId) {
     event.preventDefault();
     const form = event.currentTarget;
-    const input = form.querySelector("input");
+    const [input, reasonInput] = form.querySelectorAll("input");
     const button = form.querySelector("button");
+    const wasPanelOpen = !document.getElementById(`user-point-transactions-${userId}`)?.classList.contains("hidden");
     const totalPoints = Number(input.value);
+    const reason = String(reasonInput?.value || "").trim();
 
     if (!Number.isInteger(totalPoints) || totalPoints < 0 || totalPoints > 1_000_000_000) {
         showToast("Điểm phải là số nguyên từ 0 đến 1.000.000.000.", "error");
+        return false;
+    }
+    if (!reason) {
+        showToast("Vui lòng nhập lý do điều chỉnh điểm.", "error");
+        reasonInput?.focus();
         return false;
     }
 
@@ -500,11 +542,22 @@ async function saveUserPoints(event, userId) {
         const data = await fetchJson(`/api/v1/admin/users/${encodeURIComponent(userId)}/points`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ total_points: totalPoints }),
+            body: JSON.stringify({ total_points: totalPoints, reason }),
         });
         const user = state.users.find(item => item.id === data.id);
         if (user) user.total_points = data.total_points;
+        if (data.transaction) {
+            const current = state.pointTransactionsByUser[userId];
+            if (current?.items) {
+                current.items.unshift(data.transaction);
+            }
+        }
+        reasonInput.value = "";
         renderUsers();
+        if (wasPanelOpen) {
+            document.getElementById(`user-point-transactions-${userId}`)?.classList.remove("hidden");
+            renderUserPointTransactions(userId);
+        }
         renderOverviewUsers();
         await fetchOverview();
         showToast("Đã cập nhật điểm người dùng.", "success");
@@ -515,6 +568,78 @@ async function saveUserPoints(event, userId) {
         button.textContent = oldText;
     }
     return false;
+}
+
+function renderUserPointTransactions(userId) {
+    const container = document.getElementById(`user-point-transactions-list-${userId}`);
+    if (!container) return;
+    const stateEntry = state.pointTransactionsByUser[userId];
+    const items = Array.isArray(stateEntry?.items) ? stateEntry.items : [];
+    if (!items.length) {
+        container.innerHTML = emptyPanel("Chưa có giao dịch điểm nào.");
+        return;
+    }
+    container.innerHTML = items.map(item => `
+        <article class="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3">
+            <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="rounded-full border px-2.5 py-1 text-[11px] font-semibold ${pointTransactionBadge(item)}">${escapeHtml(item.transaction_type_label || item.transaction_type || "Giao dịch")}</span>
+                        ${item.is_backfilled ? `<span class="rounded-full border border-slate-700 bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-slate-400">Backfill</span>` : ""}
+                    </div>
+                    <div class="mt-2 text-sm font-semibold text-white">${escapeHtml(item.description || "")}</div>
+                    <div class="mt-1 text-xs text-slate-400">${escapeHtml(formatDateTime(item.created_at))}</div>
+                    ${item.actor ? `<div class="mt-1 text-[11px] text-slate-500">Actor: ${escapeHtml(item.actor.display_name || item.actor.email || "")}</div>` : ""}
+                </div>
+                <div class="flex-shrink-0 text-right">
+                    <div class="text-sm font-black ${Number(item.delta_points || 0) >= 0 ? "text-emerald-300" : "text-rose-300"}">${Number(item.delta_points || 0) >= 0 ? "+" : "-"}${formatCoins(Math.abs(Number(item.delta_points || 0)))}</div>
+                    <div class="mt-1 text-[11px] text-slate-500">Số dư ${formatCoins(item.balance_after || 0)}</div>
+                </div>
+            </div>
+        </article>
+    `).join("");
+}
+
+async function fetchUserPointTransactions(userId, reset = false) {
+    const entry = state.pointTransactionsByUser[userId] || { items: [], nextOffset: 0, loading: false };
+    if (entry.loading) return;
+    if (reset) {
+        entry.items = [];
+        entry.nextOffset = 0;
+    }
+    entry.loading = true;
+    state.pointTransactionsByUser[userId] = entry;
+    try {
+        const offset = entry.nextOffset ?? 0;
+        const data = await fetchJson(`/api/v1/admin/users/${encodeURIComponent(userId)}/point-transactions?offset=${offset}&limit=10`);
+        const items = Array.isArray(data.items) ? data.items : [];
+        entry.items = reset ? items : entry.items.concat(items);
+        entry.nextOffset = data.next_offset ?? null;
+        renderUserPointTransactions(userId);
+    } catch (err) {
+        showToast(err.message || "Không thể tải lịch sử điểm.", "error");
+    } finally {
+        entry.loading = false;
+    }
+}
+
+async function toggleUserPointTransactions(userId) {
+    const panel = document.getElementById(`user-point-transactions-${userId}`);
+    if (!panel) return;
+    const isHidden = panel.classList.contains("hidden");
+    panel.classList.toggle("hidden");
+    if (isHidden) {
+        await fetchUserPointTransactions(userId, true);
+    }
+}
+
+async function loadMoreUserPointTransactions(userId) {
+    const entry = state.pointTransactionsByUser[userId];
+    if (entry?.nextOffset === null) {
+        showToast("Đã tải hết lịch sử điểm.", "success");
+        return;
+    }
+    await fetchUserPointTransactions(userId, false);
 }
 
 async function fetchRechargeRequests() {
