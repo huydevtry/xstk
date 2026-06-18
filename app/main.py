@@ -28,7 +28,7 @@ import html
 import re
 
 from app.database import engine, Base, get_db
-from app.models import Match, MatchStatus, Bet, User, PointRechargeRequest, PointRechargeStatus, AppSetting
+from app.models import Match, MatchStatus, Bet, User, ProfileStatusPost, PointRechargeRequest, PointRechargeStatus, AppSetting
 from app.dependencies import get_current_user, get_admin_user, ADMIN_EMAILS
 
 logger = logging.getLogger(__name__)
@@ -69,6 +69,8 @@ APP_TIMEZONE = ZoneInfo("Asia/Ho_Chi_Minh")
 match_status_sync_task: asyncio.Task | None = None
 MAX_PROFILE_NAME_LENGTH = 30
 MAX_TAUNT_LENGTH = 30
+MAX_PROFILE_STATUS_LENGTH = 160
+MAX_PROFILE_TIMELINE_ITEMS = 20
 MAX_HOMEPAGE_ANNOUNCEMENT_LENGTH = 280
 
 
@@ -102,6 +104,96 @@ def _normalize_optional_taunt(value: Optional[str]) -> Optional[str]:
     if len(text) > MAX_TAUNT_LENGTH:
         raise HTTPException(status_code=400, detail=f"Câu gáy tối đa {MAX_TAUNT_LENGTH} ký tự.")
     return text
+
+
+def _normalize_optional_profile_status(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if len(text) > MAX_PROFILE_STATUS_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Trạng thái tối đa {MAX_PROFILE_STATUS_LENGTH} ký tự.")
+    return text
+
+
+def _serialize_profile_status_post(post: ProfileStatusPost) -> dict:
+    return {
+        "id": post.id,
+        "content": post.content,
+        "created_at": post.created_at.isoformat() if post.created_at else None,
+    }
+
+
+async def _get_profile_status_timeline(
+    db: AsyncSession,
+    user_id: UUID,
+    *,
+    limit: int = MAX_PROFILE_TIMELINE_ITEMS,
+) -> list[dict]:
+    rows = (
+        await db.execute(
+            select(ProfileStatusPost)
+            .where(ProfileStatusPost.user_id == user_id)
+            .order_by(desc(ProfileStatusPost.created_at), desc(ProfileStatusPost.id))
+            .limit(limit)
+        )
+    ).scalars().all()
+    return [_serialize_profile_status_post(row) for row in rows]
+
+
+async def _create_profile_status_post(
+    db: AsyncSession,
+    user: User,
+    content: str,
+    *,
+    created_at: Optional[datetime] = None,
+) -> ProfileStatusPost:
+    post = ProfileStatusPost(
+        user_id=user.id,
+        content=content,
+        created_at=created_at or datetime.utcnow(),
+    )
+    user.profile_status = content
+    db.add(post)
+    db.add(user)
+    return post
+
+
+async def _backfill_profile_status_timeline(db: AsyncSession) -> None:
+    legacy_users = (
+        await db.execute(
+            select(User).where(User.profile_status.is_not(None))
+        )
+    ).scalars().all()
+    if not legacy_users:
+        return
+
+    existing_user_ids = {
+        user_id
+        for user_id in (
+            await db.execute(select(ProfileStatusPost.user_id).distinct())
+        ).scalars().all()
+        if user_id is not None
+    }
+
+    created = False
+    for user in legacy_users:
+        if user.id in existing_user_ids:
+            continue
+        content = _normalize_optional_profile_status(user.profile_status)
+        if content is None:
+            continue
+        await _create_profile_status_post(
+            db,
+            user,
+            content,
+            created_at=user.created_at or datetime.utcnow(),
+        )
+        created = True
+
+    if created:
+        await db.commit()
 
 
 def _local_now_naive() -> datetime:
@@ -359,6 +451,8 @@ async def startup_event():
         user_column_names = {row[1] for row in user_columns}
         if "default_taunt" not in user_column_names:
             await conn.exec_driver_sql("ALTER TABLE users ADD COLUMN default_taunt VARCHAR")
+        if "profile_status" not in user_column_names:
+            await conn.exec_driver_sql("ALTER TABLE users ADD COLUMN profile_status VARCHAR")
 
         bet_columns = (
             await conn.exec_driver_sql("PRAGMA table_info(bets)")
@@ -423,6 +517,7 @@ async def startup_event():
 
     async with AsyncSession(engine) as session:
         await _ensure_default_settings(session)
+        await _backfill_profile_status_timeline(session)
         result = await session.execute(select(Match))
         if not result.scalars().first():
             mock_matches = [
@@ -616,6 +711,11 @@ async def get_public_settings(db: AsyncSession = Depends(get_db)):
 class UpdateProfilePayload(BaseModel):
     display_name: Optional[str] = None
     default_taunt: Optional[str] = None
+    profile_status: Optional[str] = None
+
+
+class ProfileStatusPostPayload(BaseModel):
+    content: str = Field(..., max_length=MAX_PROFILE_STATUS_LENGTH)
 
 @app.post("/api/v1/me/update-legacy")
 async def update_me(
@@ -630,6 +730,12 @@ async def update_me(
         if len(name) > 30:
             raise HTTPException(status_code=400, detail="Tên hiển thị tối đa 30 ký tự.")
         user.display_name = name
+    if payload.default_taunt is not None:
+        user.default_taunt = _normalize_optional_taunt(payload.default_taunt)
+    if payload.profile_status is not None:
+        content = _normalize_optional_profile_status(payload.profile_status)
+        if content is not None:
+            await _create_profile_status_post(db, user, content)
     db.add(user)
     await db.commit()
     await db.refresh(user)
@@ -641,6 +747,9 @@ async def update_me(
         "avatar_url": user.avatar_url,
         "avatar_color": user.avatar_color or "#6366f1",
         "initials": (display_name[:2]).upper(),
+        "default_taunt": user.default_taunt,
+        "profile_status": user.profile_status,
+        "status_timeline": await _get_profile_status_timeline(db, user.id),
     }
 
 
@@ -655,6 +764,10 @@ async def update_me_v2(
         user.display_name = _normalize_display_name(payload.display_name)
     if "default_taunt" in fields:
         user.default_taunt = _normalize_optional_taunt(payload.default_taunt)
+    if "profile_status" in fields:
+        content = _normalize_optional_profile_status(payload.profile_status)
+        if content is not None:
+            await _create_profile_status_post(db, user, content)
 
     db.add(user)
     await db.commit()
@@ -668,6 +781,30 @@ async def update_me_v2(
         "avatar_color": user.avatar_color or "#6366f1",
         "initials": _user_initials(user),
         "default_taunt": user.default_taunt,
+        "profile_status": user.profile_status,
+        "status_timeline": await _get_profile_status_timeline(db, user.id),
+    }
+
+
+@app.post("/api/v1/me/statuses", status_code=201)
+async def create_profile_status(
+    payload: ProfileStatusPostPayload,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    content = _normalize_optional_profile_status(payload.content)
+    if content is None:
+        raise HTTPException(status_code=400, detail="Trạng thái không được để trống.")
+
+    post = await _create_profile_status_post(db, user, content)
+    await db.commit()
+    await db.refresh(post)
+    await db.refresh(user)
+
+    return {
+        "status_post": _serialize_profile_status_post(post),
+        "status_timeline": await _get_profile_status_timeline(db, user.id),
+        "profile_status": user.profile_status,
     }
 
 
@@ -2269,6 +2406,7 @@ async def _build_profile_payload(
         "email": user.email,
         "display_name": _user_display_name(user),
         "default_taunt": user.default_taunt,
+        "profile_status": user.profile_status,
         "total_points": user.total_points,
         "avatar_url": user.avatar_url,
         "avatar_color": user.avatar_color or "#6366f1",
@@ -2278,6 +2416,9 @@ async def _build_profile_payload(
         "can_edit": True,
     }
     if db is not None:
+        payload["status_timeline"] = await _get_profile_status_timeline(db, user.id)
+        if payload["status_timeline"]:
+            payload["profile_status"] = payload["status_timeline"][0]["content"]
         payload["features"] = await _get_feature_settings(db)
         if include_badge:
             payload["badge"] = await _build_user_badge_for_profile(user, db)

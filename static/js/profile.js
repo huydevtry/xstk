@@ -554,9 +554,70 @@ function updateDefaultTauntCount() {
     const input = document.getElementById("default-taunt-input");
     const count = document.getElementById("default-taunt-count");
     if (!input || !count) return;
+    const maxLength = Number(input.maxLength || 0);
+    const nearLimit = maxLength > 0 && input.value.length > Math.max(maxLength - 15, 0);
     count.textContent = String(input.value.length);
-    count.parentElement?.classList.toggle("text-rose-500", input.value.length > 27);
-    count.parentElement?.classList.toggle("text-slate-400", input.value.length <= 27);
+    count.parentElement?.classList.toggle("text-rose-500", nearLimit);
+    count.parentElement?.classList.toggle("text-slate-400", !nearLimit);
+}
+
+function getProfileStatusTimeline(data) {
+    if (!Array.isArray(data?.status_timeline)) return [];
+    return data.status_timeline;
+}
+
+function formatProfileStatusTime(value) {
+    if (!value) return "Khong ro thoi gian";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Khong ro thoi gian";
+    return date.toLocaleString("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+}
+
+function renderProfileStatusTimeline(data) {
+    const section = document.getElementById("profile-status-section");
+    const meta = document.getElementById("profile-status-meta");
+    const empty = document.getElementById("profile-status-empty");
+    const timelineEl = document.getElementById("profile-status-timeline");
+    if (!section || !meta || !empty || !timelineEl) return;
+
+    const timeline = getProfileStatusTimeline(data);
+    const hasStatus = timeline.length > 0;
+    const editable = data?.can_edit !== false;
+    const fallbackName = data?.email ? data.email.split("@")[0] : (data?.initials || "User");
+    const shortName = data?.display_name || fallbackName;
+
+    section.classList.toggle("hidden", !editable && !hasStatus);
+    empty.classList.toggle("hidden", hasStatus);
+    meta.textContent = hasStatus
+        ? `${timeline.length} trang thai gan nhat tren trang ca nhan.`
+        : (editable
+            ? "Dang trang thai dau tien de bat dau dong thoi gian cua ban."
+            : "Nguoi dung nay chua dang trang thai nao.");
+
+    if (!hasStatus) {
+        timelineEl.innerHTML = "";
+        return;
+    }
+
+    timelineEl.innerHTML = timeline.map((item, index) => `
+        <article class="relative pl-6">
+            <span class="absolute left-0 top-2.5 h-2.5 w-2.5 rounded-full bg-sky-500 ring-4 ring-sky-100"></span>
+            ${index < timeline.length - 1 ? '<span class="absolute left-[4px] top-5 bottom-[-16px] w-px bg-slate-200"></span>' : ""}
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div class="flex items-center justify-between gap-3">
+                    <div class="text-sm font-semibold text-slate-900">${escapeHtml(shortName)}</div>
+                    <div class="text-[11px] text-slate-400">${escapeHtml(formatProfileStatusTime(item.created_at))}</div>
+                </div>
+                <p class="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">${escapeHtml(item.content || "")}</p>
+            </div>
+        </article>
+    `).join("");
 }
 
 function syncDefaultTauntEditor(data) {
@@ -572,7 +633,6 @@ function syncDefaultTauntEditor(data) {
 
     if (!editable) return;
 
-    input.value = data?.default_taunt || "";
     updateDefaultTauntCount();
     setDefaultTauntStatus("");
 }
@@ -591,31 +651,32 @@ function initDefaultTauntEditor() {
 
     saveBtn.addEventListener("click", async () => {
         if (_profileData?.can_edit === false) return;
-        if (input.value.length > 30) {
-            setDefaultTauntStatus("Toi da 30 ky tu.", "error");
+        if (input.value.length > input.maxLength) {
+            setDefaultTauntStatus(`Toi da ${input.maxLength} ky tu.`, "error");
             return;
         }
 
         saveBtn.disabled = true;
         const oldText = saveBtn.textContent;
-        saveBtn.textContent = "Dang luu...";
+        saveBtn.textContent = "Dang dang...";
         setDefaultTauntStatus("");
 
         try {
-            const res = await fetch("/api/v1/me/update", {
+            const res = await fetch("/api/v1/me/statuses", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ default_taunt: input.value }),
+                body: JSON.stringify({ content: input.value }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.detail || `Loi ${res.status}`);
 
             _profileData = { ..._profileData, ...data };
-            input.value = _profileData.default_taunt || "";
+            input.value = "";
             updateDefaultTauntCount();
-            setDefaultTauntStatus("Da luu cau gay mac dinh.", "success");
+            renderProfileStatusTimeline(_profileData);
+            setDefaultTauntStatus("Da dang trang thai moi.", "success");
         } catch (err) {
-            setDefaultTauntStatus(err.message || "Khong the luu cau gay.", "error");
+            setDefaultTauntStatus(err.message || "Khong the dang trang thai.", "error");
         } finally {
             saveBtn.disabled = false;
             saveBtn.textContent = oldText;
@@ -661,4 +722,5 @@ function applyProfileUI(data) {
 
     initDefaultTauntEditor();
     syncDefaultTauntEditor(data);
+    renderProfileStatusTimeline(data);
 }

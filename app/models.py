@@ -48,10 +48,20 @@ class User(Base):
     email = Column(String, unique=True, nullable=False, index=True)
     display_name = Column(String, nullable=True)
     default_taunt = Column(String, nullable=True)
+    profile_status = Column(String, nullable=True)
     total_points = Column(Integer, default=1000)
     avatar_url = Column(String, nullable=True)
     avatar_color = Column(String, nullable=True, default=_random_avatar_color)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ProfileStatusPost(Base):
+    __tablename__ = "profile_status_posts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    content = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
 
 class Match(Base):
