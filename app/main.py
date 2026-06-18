@@ -69,6 +69,7 @@ APP_TIMEZONE = ZoneInfo("Asia/Ho_Chi_Minh")
 match_status_sync_task: asyncio.Task | None = None
 MAX_PROFILE_NAME_LENGTH = 30
 MAX_TAUNT_LENGTH = 30
+MAX_HOMEPAGE_ANNOUNCEMENT_LENGTH = 280
 
 
 def _format_coins(value: int) -> str:
@@ -236,6 +237,7 @@ async def notify_admin_recharge_request(request_id: int, user: User, amount: int
 
 DEFAULT_FEATURE_SETTINGS = {
     "points_enabled": "1",
+    "homepage_announcement": "",
 }
 
 
@@ -263,7 +265,7 @@ async def _ensure_default_settings(db: AsyncSession) -> None:
         await db.commit()
 
 
-async def _get_feature_settings(db: AsyncSession) -> dict[str, bool]:
+async def _get_feature_settings(db: AsyncSession) -> dict[str, object]:
     await _ensure_default_settings(db)
     settings = (await db.execute(select(AppSetting))).scalars().all()
     value_map = {item.key: item.value for item in settings}
@@ -274,6 +276,7 @@ async def _get_feature_settings(db: AsyncSession) -> dict[str, bool]:
             value_map.get("points_enabled"),
             legacy_topup and legacy_exchange,
         ),
+        "homepage_announcement": (value_map.get("homepage_announcement") or "").strip(),
     }
 
 
@@ -487,6 +490,7 @@ class PointRechargePayload(BaseModel):
 
 class AdminSettingsPayload(BaseModel):
     points_enabled: bool
+    homepage_announcement: str = Field(default="", max_length=MAX_HOMEPAGE_ANNOUNCEMENT_LENGTH)
 
 
 class AdminUserPointsPayload(BaseModel):
@@ -1226,15 +1230,25 @@ async def update_admin_settings(
     await _ensure_default_settings(db)
     settings = (await db.execute(select(AppSetting))).scalars().all()
     settings_map = {item.key: item for item in settings}
-
-    for key, value in {
+    provided_fields = _provided_fields(payload)
+    values_to_update: dict[str, bool | str] = {
         "points_enabled": payload.points_enabled,
-    }.items():
+    }
+    if "homepage_announcement" in provided_fields:
+        values_to_update["homepage_announcement"] = payload.homepage_announcement.strip()
+
+    for key, value in values_to_update.items():
         setting = settings_map.get(key)
         if not setting:
-            setting = AppSetting(key=key, value="1" if value else "0")
+            if isinstance(value, bool):
+                setting = AppSetting(key=key, value="1" if value else "0")
+            else:
+                setting = AppSetting(key=key, value=value)
         else:
-            setting.value = "1" if value else "0"
+            if isinstance(value, bool):
+                setting.value = "1" if value else "0"
+            else:
+                setting.value = value
         db.add(setting)
 
     await db.commit()

@@ -2,6 +2,7 @@ const state = {
     overview: null,
     settings: {
         points_enabled: true,
+        homepage_announcement: "",
     },
     users: [],
     matches: [],
@@ -212,6 +213,7 @@ function renderOverviewUsers() {
 function renderOverviewFeatures() {
     const container = document.getElementById("overview-features");
     const enabled = Boolean(state.settings.points_enabled);
+    const announcement = String(state.settings.homepage_announcement || "").trim();
     container.innerHTML = `
         <div class="rounded-2xl border ${enabled ? "border-emerald-500/30 bg-emerald-500/8" : "border-rose-500/25 bg-rose-500/8"} px-4 py-4">
             <div class="flex items-center justify-between gap-3">
@@ -224,20 +226,36 @@ function renderOverviewFeatures() {
                 </span>
             </div>
         </div>
+        <div class="rounded-2xl border ${announcement ? "border-sky-500/30 bg-sky-500/8" : "border-slate-800 bg-slate-950/50"} px-4 py-4">
+            <div class="flex items-center justify-between gap-3">
+                <div class="min-w-0">
+                    <div class="font-semibold text-white">Thong bao trang chu</div>
+                    <div class="mt-1 text-sm ${announcement ? "text-sky-100" : "text-slate-400"}">${escapeHtml(announcement || "Chua co thong bao hien thi cho user.")}</div>
+                </div>
+                <span class="rounded-full px-3 py-1 text-xs font-semibold ${announcement ? "bg-sky-500/15 text-sky-200" : "bg-slate-800 text-slate-300"}">
+                    ${announcement ? "Dang hien" : "Dang an"}
+                </span>
+            </div>
+        </div>
     `;
 }
 function renderFeaturePills() {
     const container = document.getElementById("feature-status");
     const enabled = Boolean(state.settings.points_enabled);
+    const announcement = String(state.settings.homepage_announcement || "").trim();
     container.innerHTML = `
         <span class="rounded-full border px-3 py-1 ${enabled ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-rose-500/30 bg-rose-500/10 text-rose-200"}">
             Nap / doi diem: ${enabled ? "Bat" : "Tat"}
+        </span>
+        <span class="rounded-full border px-3 py-1 ${announcement ? "border-sky-500/30 bg-sky-500/10 text-sky-200" : "border-slate-700 bg-slate-900 text-slate-300"}">
+            Thong bao trang chu: ${announcement ? "Dang hien" : "Dang an"}
         </span>
     `;
 }
 function renderSettings() {
     const list = document.getElementById("settings-list");
     const enabled = Boolean(state.settings.points_enabled);
+    const announcement = String(state.settings.homepage_announcement || "");
     list.innerHTML = `
         <div class="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4">
             <div class="flex items-center justify-between gap-4">
@@ -252,6 +270,22 @@ function renderSettings() {
                 </button>
             </div>
         </div>
+        <div class="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4">
+            <label for="homepage-announcement-input" class="block">
+                <div class="font-semibold text-white">Thong bao hien thi o trang chu</div>
+                <div class="mt-1 text-sm text-slate-400">Nhap noi dung de hien cho tat ca user. Xoa het noi dung neu muon an thong bao.</div>
+            </label>
+            <textarea
+                id="homepage-announcement-input"
+                class="mt-3 min-h-28 w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none transition focus:border-sky-500"
+                maxlength="280"
+                placeholder="Vi du: Toi nay he thong se bao tri tu 22:00 den 22:15."
+            >${escapeHtml(announcement)}</textarea>
+            <div class="mt-2 flex items-center justify-between gap-3 text-xs">
+                <span class="${announcement.trim() ? "text-sky-200" : "text-slate-500"}">${announcement.trim() ? "Thong bao nay dang san sang de hien tren homepage." : "Chua co noi dung thong bao."}</span>
+                <span id="homepage-announcement-count" class="text-slate-400">${announcement.length}/280</span>
+            </div>
+        </div>
     `;
     list.querySelectorAll("[data-setting-key]").forEach(btn => {
         btn.addEventListener("click", () => {
@@ -260,6 +294,14 @@ function renderSettings() {
             renderFeaturePills();
             renderOverviewFeatures();
         });
+    });
+    const announcementInput = document.getElementById("homepage-announcement-input");
+    announcementInput?.addEventListener("input", event => {
+        state.settings.homepage_announcement = event.target.value;
+        const count = document.getElementById("homepage-announcement-count");
+        if (count) {
+            count.textContent = `${event.target.value.length}/280`;
+        }
     });
 }
 
@@ -286,7 +328,10 @@ async function saveSettings() {
         state.settings = await fetchJson("/api/v1/admin/settings", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ points_enabled: Boolean(state.settings.points_enabled) }),
+            body: JSON.stringify({
+                points_enabled: Boolean(state.settings.points_enabled),
+                homepage_announcement: String(state.settings.homepage_announcement || ""),
+            }),
         });
         renderSettings();
         renderFeaturePills();

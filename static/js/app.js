@@ -4,6 +4,10 @@ let placedBets = new Set();      // match IDs đã cược trong session này
 let matchDetailCache = new Map();
 let finishedSectionLoaded = false;
 let finishedSectionRefreshTimer = null;
+let appSettings = {
+    points_enabled: true,
+    homepage_announcement: "",
+};
 const NO_CACHE_FETCH_OPTIONS = { cache: "no-store" };
 const MIN_STAKE = 10;
 const QUICK_STAKE_OPTIONS = [100, 200, 500, 1000];
@@ -129,6 +133,7 @@ function getQuoteByDetail(detail) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+    fetchAppSettings();
     fetchUserProfile();
     fetchUpcomingMatches();
     startTicker();
@@ -144,6 +149,31 @@ document.addEventListener("DOMContentLoaded", () => {
     // Refresh ticker mỗi 60 giây
     setInterval(startTicker, 60_000);
 });
+
+async function fetchAppSettings() {
+    try {
+        const res = await fetch("/api/v1/settings", NO_CACHE_FETCH_OPTIONS);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        appSettings = await res.json();
+        renderHomepageAnnouncement();
+    } catch (err) {
+        console.error("fetchAppSettings error:", err);
+    }
+}
+
+function renderHomepageAnnouncement() {
+    const wrap = document.getElementById("homepage-announcement");
+    const content = document.getElementById("homepage-announcement-text");
+    if (!wrap || !content) return;
+    const announcement = String(appSettings?.homepage_announcement || "").trim();
+    if (!announcement) {
+        wrap.classList.add("hidden");
+        content.textContent = "";
+        return;
+    }
+    content.textContent = announcement;
+    wrap.classList.remove("hidden");
+}
 
 
 // ─── 1. User Profile ──────────────────────────────────────────────────────────
