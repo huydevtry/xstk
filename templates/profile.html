@@ -127,12 +127,14 @@
             background: rgba(15, 23, 42, 0.4);
             align-items: flex-end;
             justify-content: center;
+            padding: 0.5rem;
+            box-sizing: border-box;
         }
         .bottom-sheet.show { display: flex; }
         .bottom-sheet-panel {
-            width: 100%;
-            max-width: 44rem;
-            max-height: min(82vh, 720px);
+            width: min(100%, 44rem);
+            max-width: calc(100vw - 1rem);
+            max-height: min(calc(100vh - 1rem), 720px);
             background: #ffffff;
             border-top-left-radius: 1.5rem;
             border-top-right-radius: 1.5rem;
@@ -140,8 +142,20 @@
             transform: translateY(100%);
             transition: transform 0.22s ease;
             overflow: hidden;
+            box-sizing: border-box;
         }
         .bottom-sheet.show .bottom-sheet-panel { transform: translateY(0); }
+        @media (max-width: 640px) {
+            .bottom-sheet {
+                padding: 0.25rem;
+            }
+            .bottom-sheet-panel {
+                max-width: calc(100vw - 0.5rem);
+                max-height: calc(100vh - 0.5rem);
+                border-top-left-radius: 1.25rem;
+                border-top-right-radius: 1.25rem;
+            }
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans antialiased pb-24">
@@ -187,8 +201,8 @@
         <section class="mt-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
             <div class="flex items-center justify-between gap-3">
                 <div>
-                    <div class="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-500">Thống kê</div>
-                    <p class="mt-1 text-xs text-slate-500">Tổng quan kết quả đặt cược của tài khoản này.</p>
+                    <div class="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-500">Học bạ</div>
+                    <p class="mt-1 text-xs text-slate-500">Kết quả học tập</p>
                 </div>
                 <button
                     id="open-history-sheet"
@@ -201,15 +215,15 @@
             <div class="mt-4 grid grid-cols-3 gap-3">
                 <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-4 text-center">
                     <div id="stat-total" class="text-xl font-black text-slate-900">—</div>
-                    <div class="mt-1 text-xs text-slate-500">Tổng</div>
+                    <div class="mt-1 text-xs text-slate-500">Bài học</div>
                 </div>
                 <div class="rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-4 text-center">
                     <div id="stat-win" class="text-xl font-black text-emerald-600">—</div>
-                    <div class="mt-1 text-xs text-emerald-700">Thắng</div>
+                    <div class="mt-1 text-xs text-emerald-700">Giác ngộ</div>
                 </div>
                 <div class="rounded-2xl border border-rose-100 bg-rose-50 px-3 py-4 text-center">
                     <div id="stat-lose" class="text-xl font-black text-rose-600">—</div>
-                    <div class="mt-1 text-xs text-rose-700">Thua</div>
+                    <div class="mt-1 text-xs text-rose-700">Tỉnh ngộ</div>
                 </div>
             </div>
         </section>
@@ -217,8 +231,8 @@
         <section id="profile-composer-section" class="hidden mt-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
             <div class="flex items-start justify-between gap-3">
                 <div>
-                    <div class="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-500">Bài viết mới</div>
-                    <p class="mt-1 text-xs text-slate-500">Chia sẻ cảm nghĩ hoặc cảm xúc sau một trận đấu vừa chốt kèo.</p>
+                    <div class="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-500">Chia sẻ trạng thái</div>
+                    <p class="mt-1 text-xs text-slate-500">Hôm nay đứa nào làm em buồn?</p>
                 </div>
                 <button
                     id="save-profile-status"
@@ -245,7 +259,7 @@
                     rows="3"
                     maxlength="160"
                     class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-300 focus:bg-white"
-                    placeholder="Hôm nay cửa nào làm bạn cười, cửa nào làm bạn ngẫm đời?"
+                    placeholder="Nhất sinh nhị, nhị sinh tam, tam sinh vạn vật. Lỡ tay bet trật vạn vật hoá hư vô..."
                 ></textarea>
             </div>
             <div class="mt-2 flex items-center justify-between gap-3 text-xs">
@@ -258,7 +272,7 @@
             <div class="flex items-start justify-between gap-3">
                 <div>
                     <div class="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-500">Dòng thời gian</div>
-                    <p id="timeline-caption" class="mt-1 text-xs text-slate-500">Nhật ký cảm xúc và chia sẻ gần đây.</p>
+                    <p id="timeline-caption" class="mt-1 text-xs text-slate-500">Hồi ký của một dân chơi</p>
                 </div>
             </div>
             <div id="timeline-error" class="hidden mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"></div>

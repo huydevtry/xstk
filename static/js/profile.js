@@ -135,8 +135,8 @@ function applyProfileUI() {
     const caption = document.getElementById("timeline-caption");
     if (caption) {
         caption.textContent = editable
-            ? "Nhật ký cảm xúc và chia sẻ gần đây."
-            : "Dòng thời gian công khai của thành viên này.";
+            ? "Hồi ký của một dân chơi"
+            : "Hành trình giác ngộ";
     }
 
     renderAvatar(profileData);
@@ -260,14 +260,14 @@ function renderHistoryList() {
         const canShare = Boolean(profileData?.can_edit) && Boolean(bet.can_share_reaction);
         return `
             <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <button type="button" data-open-match="${bet.match_id}" class="w-full text-left">
+                <button type="button" data-open-match="${bet.match_id}" class="block w-full overflow-hidden text-left">
                     <div class="flex items-start justify-between gap-3">
                         <div class="min-w-0 flex-1">
-                            <div class="flex min-w-0 items-center gap-2">
+                            <div class="flex min-w-0 flex-wrap items-center gap-2">
                                 ${homeIcon}
-                                <div class="truncate text-sm font-semibold text-slate-900">${escapeHtml(bet.home_team)}</div>
-                                <div class="text-xs font-black text-slate-400">${escapeHtml(bet.result_published ? `${Number(bet.home_score ?? 0)} - ${Number(bet.away_score ?? 0)}` : "vs")}</div>
-                                <div class="truncate text-sm font-semibold text-slate-900">${escapeHtml(bet.away_team)}</div>
+                                <div class="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">${escapeHtml(bet.home_team)}</div>
+                                <div class="flex-shrink-0 text-xs font-black text-slate-400">${escapeHtml(bet.result_published ? `${Number(bet.home_score ?? 0)} - ${Number(bet.away_score ?? 0)}` : "vs")}</div>
+                                <div class="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">${escapeHtml(bet.away_team)}</div>
                                 ${awayIcon}
                             </div>
                             <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">

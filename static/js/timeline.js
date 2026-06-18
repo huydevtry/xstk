@@ -87,8 +87,8 @@
             : `<div class="inline-flex min-w-0 items-center gap-3">${renderAvatar(author)}<div class="min-w-0"><div class="truncate text-sm font-semibold text-slate-900">${authorName}</div><div class="text-[11px] text-slate-400">${escapeHtml(formatTime(item?.created_at))}</div></div></div>`;
 
         const badge = item?.post_type === "match_reaction"
-            ? `<span class="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sky-700">Cảm nghĩ trận</span>`
-            : `<span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">Trạng thái</span>`;
+            ? `<span class="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sky-700">Trình bày</span>`
+            : `<span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">Lè nhè</span>`;
 
         return `
             <article class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
