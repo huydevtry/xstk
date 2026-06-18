@@ -35,6 +35,7 @@ def _load_admin_emails() -> set[str]:
 
 async def get_current_user(
     cf_email: str = Header(None, alias="Cf-Access-Authenticated-User-Email"),
+    cf_name: str = Header(None, alias="Cf-Access-Authenticated-User-Name"),
     db: AsyncSession = Depends(get_db)
 ):
     if not cf_email:
@@ -46,6 +47,9 @@ async def get_current_user(
         cf_email = LOCAL_DEV_EMAIL
 
     cf_email = cf_email.strip().lower()
+    cf_name = (cf_name or "").strip() or None
+    if cf_name and len(cf_name) > 30:
+        cf_name = cf_name[:30].rstrip()
 
     # Tìm kiếm user trong Database dựa vào Email từ Cloudflare Header cung cấp
     query = select(User).where(User.email == cf_email)
@@ -56,10 +60,13 @@ async def get_current_user(
     if not user:
         user = User(
             email=cf_email,
+            display_name=cf_name,
             total_points=100,
             avatar_color=random.choice(AVATAR_COLORS)
         )
         db.add(user)
+    elif not user.display_name and cf_name:
+        user.display_name = cf_name
 
     # Luôn commit để kết thúc transaction ngầm (implicit transaction) từ hàm select ở trên,
     # tránh lỗi "A transaction is already begun on this Session" ở các route dùng db.begin()
