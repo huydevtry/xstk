@@ -56,7 +56,7 @@ async def get_current_user(
     if not user:
         user = User(
             email=cf_email,
-            total_points=1000,
+            total_points=100,
             avatar_color=random.choice(AVATAR_COLORS)
         )
         db.add(user)
