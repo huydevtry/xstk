@@ -24,6 +24,7 @@ env/
 *.db
 *.sqlite
 *.sqlite3
+static/avatars/
 
 # Logs
 *.log
