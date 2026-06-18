@@ -595,10 +595,10 @@ function renderProfileStatusTimeline(data) {
     section.classList.toggle("hidden", !editable && !hasStatus);
     empty.classList.toggle("hidden", hasStatus);
     meta.textContent = hasStatus
-        ? `${timeline.length} trang thai gan nhat tren trang ca nhan.`
+        ? `${timeline.length} trạng thái.`
         : (editable
-            ? "Dang trang thai dau tien de bat dau dong thoi gian cua ban."
-            : "Nguoi dung nay chua dang trang thai nao.");
+            ? "Đăng trạng thái đầu tiên để bắt đầu nhật ký tu hành của bạn."
+            : "Người dùng này chưa có trạng thái (chắc không biết viết)");
 
     if (!hasStatus) {
         timelineEl.innerHTML = "";
