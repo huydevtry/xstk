@@ -1875,6 +1875,10 @@ def _clean_csv_value(row: dict, key: str, default: str = "") -> str:
     return str(value).strip()
 
 
+def _csv_field_provided(row: dict, key: str) -> bool:
+    return key in row and row.get(key) is not None and str(row.get(key)).strip() != ""
+
+
 def _parse_csv_datetime(value: str) -> datetime:
     value = value.strip()
     if not value:
@@ -1932,39 +1936,80 @@ async def import_matches_csv(
     errors = []
 
     try:
+        fieldnames = set(reader.fieldnames or [])
         for line_no, row in enumerate(reader, start=2):
             if not any(str(v or "").strip() for v in row.values()):
                 continue
 
             try:
-                home_team = _clean_csv_value(row, "home_team")
-                away_team = _clean_csv_value(row, "away_team")
-                if not home_team or not away_team:
-                    raise ValueError("home_team and away_team are required")
-
-                status_value = _clean_csv_value(row, "status", MatchStatus.upcoming.value) or MatchStatus.upcoming.value
-                status = MatchStatus(status_value)
-                if status == MatchStatus.finished:
-                    raise ValueError("Use resolve match flow instead of importing finished status")
-                start_time = _parse_csv_datetime(
-                    _clean_csv_value(row, "start_time") or _clean_csv_value(row, "start_time_ict")
-                )
-                end_time_value = _clean_csv_value(row, "end_time")
-                end_time = _parse_csv_datetime(end_time_value) if end_time_value else start_time + MATCH_DEFAULT_DURATION
-                if end_time <= start_time:
-                    raise ValueError("end_time must be after start_time")
-                home_score = _parse_optional_int(_clean_csv_value(row, "home_score"), 0)
-                away_score = _parse_optional_int(_clean_csv_value(row, "away_score"), 0)
-                handicap = _parse_optional_float(_clean_csv_value(row, "handicap"), 0.0)
-                home_icon = _clean_csv_value(row, "home_icon") or None
-                away_icon = _clean_csv_value(row, "away_icon") or None
                 raw_id = _clean_csv_value(row, "id")
-
                 match = None
                 if raw_id:
                     match = (
                         await db.execute(select(Match).where(Match.id == int(raw_id)))
                     ).scalars().first()
+
+                home_team_provided = _csv_field_provided(row, "home_team")
+                away_team_provided = _csv_field_provided(row, "away_team")
+                home_team = _clean_csv_value(row, "home_team") if home_team_provided else (match.home_team if match else "")
+                away_team = _clean_csv_value(row, "away_team") if away_team_provided else (match.away_team if match else "")
+                if not home_team or not away_team:
+                    raise ValueError("home_team and away_team are required")
+
+                status_provided = _csv_field_provided(row, "status")
+                status_value = (
+                    _clean_csv_value(row, "status")
+                    if status_provided
+                    else (match.status.value if match else MatchStatus.upcoming.value)
+                ) or MatchStatus.upcoming.value
+                status = MatchStatus(status_value)
+                if status == MatchStatus.finished:
+                    raise ValueError("Use resolve match flow instead of importing finished status")
+
+                start_time_raw = _clean_csv_value(row, "start_time") or _clean_csv_value(row, "start_time_ict")
+                if start_time_raw:
+                    start_time = _parse_csv_datetime(start_time_raw)
+                elif match:
+                    start_time = match.start_time
+                else:
+                    raise ValueError("start_time is required")
+
+                end_time_provided = _csv_field_provided(row, "end_time")
+                end_time_value = _clean_csv_value(row, "end_time")
+                if end_time_provided:
+                    end_time = _parse_csv_datetime(end_time_value)
+                elif match and match.end_time:
+                    end_time = match.end_time
+                else:
+                    end_time = start_time + MATCH_DEFAULT_DURATION
+                if end_time <= start_time:
+                    raise ValueError("end_time must be after start_time")
+
+                home_score = (
+                    _parse_optional_int(_clean_csv_value(row, "home_score"), 0)
+                    if _csv_field_provided(row, "home_score")
+                    else (match.home_score if match else 0)
+                )
+                away_score = (
+                    _parse_optional_int(_clean_csv_value(row, "away_score"), 0)
+                    if _csv_field_provided(row, "away_score")
+                    else (match.away_score if match else 0)
+                )
+                handicap = (
+                    _parse_optional_float(_clean_csv_value(row, "handicap"), 0.0)
+                    if _csv_field_provided(row, "handicap")
+                    else (match.handicap if match else 0.0)
+                )
+                home_icon = (
+                    _clean_csv_value(row, "home_icon") or None
+                    if "home_icon" in fieldnames and row.get("home_icon") is not None
+                    else (match.home_icon if match else None)
+                )
+                away_icon = (
+                    _clean_csv_value(row, "away_icon") or None
+                    if "away_icon" in fieldnames and row.get("away_icon") is not None
+                    else (match.away_icon if match else None)
+                )
 
                 if match:
                     match.home_team = home_team
