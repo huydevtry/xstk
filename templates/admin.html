@@ -168,11 +168,18 @@
                     <input type="hidden" id="match-id">
                     <input id="home-team" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" placeholder="Đội nhà" required maxlength="80">
                     <input id="away-team" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" placeholder="Đội khách" required maxlength="80">
-                    <input id="home-icon" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" placeholder="Icon/URL đội nhà">
-                    <input id="away-icon" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" placeholder="Icon/URL đội khách">
+                    <div class="space-y-2">
+                        <input id="home-country-code" maxlength="2" inputmode="latin" autocomplete="off" class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm uppercase tracking-[0.2em] text-white outline-none transition focus:border-emerald-500" placeholder="Mã quốc gia đội nhà">
+                        <p id="home-flag-preview" class="text-xs text-slate-400">Flag URL sẽ tự sinh tại đây.</p>
+                    </div>
+                    <div class="space-y-2">
+                        <input id="away-country-code" maxlength="2" inputmode="latin" autocomplete="off" class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm uppercase tracking-[0.2em] text-white outline-none transition focus:border-emerald-500" placeholder="Mã quốc gia đội khách">
+                        <p id="away-flag-preview" class="text-xs text-slate-400">Flag URL sẽ tự sinh tại đây.</p>
+                    </div>
                     <input id="handicap" type="number" step="0.25" value="0" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" placeholder="Kèo chấp">
-                    <input id="start-time" type="datetime-local" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" required>
-                    <input id="end-time" type="datetime-local" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" required>
+                    <input id="start-date" type="date" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" required>
+                    <input id="start-time" type="time" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" required>
+                    <input id="end-time" type="datetime-local" readonly class="rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-2.5 text-sm text-slate-300 outline-none transition" aria-label="Giờ kết thúc tự động">
                     <select id="status" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500">
                         <option value="upcoming">upcoming</option>
                         <option value="live">live</option>

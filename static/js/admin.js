@@ -12,9 +12,13 @@ const state = {
     toastTimer: null,
 };
 
+const MATCH_DEFAULT_DURATION_MINUTES = 120;
+const FLAG_CDN_PREFIX = "https://flagcdn.com/128x96/";
+
 document.addEventListener("DOMContentLoaded", () => {
     bindTabs();
     bindActions();
+    bindMatchFormControls();
     document.getElementById("match-form")?.addEventListener("submit", saveMatch);
     document.getElementById("csv-import-form")?.addEventListener("submit", importMatchesCsv);
     fetchInitialData();
@@ -35,6 +39,30 @@ function safeImageSrc(value) {
     if (!src) return "";
     if (src.startsWith("/") || /^https?:\/\//i.test(src)) return escapeHtml(src);
     return "";
+}
+
+function normalizeCountryCode(value) {
+    return String(value ?? "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
+}
+
+function extractCountryCode(value) {
+    const src = String(value ?? "").trim();
+    if (!src) return "";
+    const direct = src.match(/flagcdn\.com\/128x96\/([a-z]{2})\.png/i);
+    if (direct) return direct[1].toUpperCase();
+    try {
+        const url = new URL(src);
+        const filename = url.pathname.split("/").filter(Boolean).pop() || "";
+        const code = filename.replace(/\.png$/i, "");
+        return /^[a-z]{2}$/i.test(code) ? code.toUpperCase() : "";
+    } catch {
+        return "";
+    }
+}
+
+function buildFlagUrl(countryCode) {
+    const code = normalizeCountryCode(countryCode).toLowerCase();
+    return code.length === 2 ? `${FLAG_CDN_PREFIX}${code}.png` : "";
 }
 
 function safeCssColor(value) {
@@ -61,6 +89,37 @@ function formatDateTime(value) {
         month: "2-digit",
         year: "numeric",
     }).format(date);
+}
+
+function localDateValue(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const pad = number => String(number).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function localTimeValue(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const pad = number => String(number).padStart(2, "0");
+    return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function localDateTimeValueFromParts(dateValue, timeValue, addMinutes = 0) {
+    if (!dateValue || !timeValue) return "";
+    const [year, month, day] = dateValue.split("-").map(Number);
+    const [hour, minute] = timeValue.split(":").map(Number);
+    const date = new Date(year, month - 1, day, hour, minute + addMinutes, 0, 0);
+    if (Number.isNaN(date.getTime())) return "";
+    const pad = number => String(number).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function apiDateTimeValueFromParts(dateValue, timeValue) {
+    const localValue = localDateTimeValueFromParts(dateValue, timeValue);
+    return localValue ? apiDateTimeValue(localValue) : "";
 }
 
 function normalizeMatchStatus(value) {
@@ -111,6 +170,44 @@ function bindActions() {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => fetchUsers(state.userSearch), 250);
     });
+}
+
+function bindMatchFormControls() {
+    ["home-country-code", "away-country-code"].forEach(inputId => {
+        const input = document.getElementById(inputId);
+        if (!input) return;
+        const previewId = inputId === "home-country-code" ? "home-flag-preview" : "away-flag-preview";
+        const handleInput = () => {
+            input.value = normalizeCountryCode(input.value);
+            updateFlagPreview(previewId, input.value);
+        };
+        input.addEventListener("input", handleInput);
+        input.addEventListener("blur", handleInput);
+        updateFlagPreview(previewId, input.value);
+    });
+
+    ["start-date", "start-time"].forEach(inputId => {
+        document.getElementById(inputId)?.addEventListener("input", syncMatchEndTime);
+        document.getElementById(inputId)?.addEventListener("change", syncMatchEndTime);
+    });
+}
+
+function updateFlagPreview(previewId, countryCode) {
+    const preview = document.getElementById(previewId);
+    if (!preview) return;
+    const code = normalizeCountryCode(countryCode);
+    const url = buildFlagUrl(code);
+    preview.innerHTML = url
+        ? `URL: <span class="break-all font-medium text-slate-200">${escapeHtml(url)}</span>`
+        : "Flag URL sẽ tự sinh tại đây.";
+}
+
+function syncMatchEndTime() {
+    const startDate = document.getElementById("start-date")?.value || "";
+    const startTime = document.getElementById("start-time")?.value || "";
+    const endTime = document.getElementById("end-time");
+    if (!endTime) return;
+    endTime.value = localDateTimeValueFromParts(startDate, startTime, MATCH_DEFAULT_DURATION_MINUTES) || "";
 }
 
 async function refreshAll() {
@@ -593,14 +690,18 @@ function apiDateTimeValue(value) {
 }
 
 function readMatchPayload() {
+    const startDate = document.getElementById("start-date").value;
+    const startTime = document.getElementById("start-time").value;
+    const homeCountryCode = normalizeCountryCode(document.getElementById("home-country-code").value);
+    const awayCountryCode = normalizeCountryCode(document.getElementById("away-country-code").value);
     return {
         home_team: document.getElementById("home-team").value.trim(),
         away_team: document.getElementById("away-team").value.trim(),
-        home_icon: document.getElementById("home-icon").value.trim() || null,
-        away_icon: document.getElementById("away-icon").value.trim() || null,
+        home_icon: homeCountryCode ? buildFlagUrl(homeCountryCode) : null,
+        away_icon: awayCountryCode ? buildFlagUrl(awayCountryCode) : null,
         handicap: Number(document.getElementById("handicap").value || 0),
         status: document.getElementById("status").value,
-        start_time: apiDateTimeValue(document.getElementById("start-time").value),
+        start_time: apiDateTimeValueFromParts(startDate, startTime),
         end_time: apiDateTimeValue(document.getElementById("end-time").value),
     };
 }
@@ -643,12 +744,15 @@ function editMatch(matchId) {
     document.getElementById("match-id").value = match.id;
     document.getElementById("home-team").value = match.home_team || "";
     document.getElementById("away-team").value = match.away_team || "";
-    document.getElementById("home-icon").value = match.home_icon || "";
-    document.getElementById("away-icon").value = match.away_icon || "";
+    document.getElementById("home-country-code").value = extractCountryCode(match.home_icon);
+    document.getElementById("away-country-code").value = extractCountryCode(match.away_icon);
+    updateFlagPreview("home-flag-preview", document.getElementById("home-country-code").value);
+    updateFlagPreview("away-flag-preview", document.getElementById("away-country-code").value);
     document.getElementById("handicap").value = Number(match.handicap || 0);
     document.getElementById("status").value = normalizeMatchStatus(match.status) === "live" ? "live" : "upcoming";
-    document.getElementById("start-time").value = localDateTimeValue(match.start_time);
-    document.getElementById("end-time").value = localDateTimeValue(match.end_time);
+    document.getElementById("start-date").value = localDateValue(match.start_time);
+    document.getElementById("start-time").value = localTimeValue(match.start_time);
+    syncMatchEndTime();
     document.getElementById("match-form-title").textContent = "Sửa trận đấu";
     document.getElementById("save-match-btn").textContent = "Cập nhật trận";
     document.getElementById("cancel-edit-btn").classList.remove("hidden");
@@ -661,6 +765,13 @@ function resetMatchForm() {
     document.getElementById("match-id").value = "";
     document.getElementById("handicap").value = "0";
     document.getElementById("status").value = "upcoming";
+    document.getElementById("home-country-code").value = "";
+    document.getElementById("away-country-code").value = "";
+    updateFlagPreview("home-flag-preview", "");
+    updateFlagPreview("away-flag-preview", "");
+    document.getElementById("start-date").value = "";
+    document.getElementById("start-time").value = "";
+    document.getElementById("end-time").value = "";
     document.getElementById("match-form-title").textContent = "Thêm trận đấu";
     document.getElementById("save-match-btn").textContent = "Lưu trận";
     document.getElementById("cancel-edit-btn")?.classList.add("hidden");

@@ -482,7 +482,7 @@ class MatchPayload(BaseModel):
     handicap: float = 0.0
     status: MatchStatus = MatchStatus.upcoming
     start_time: datetime
-    end_time: datetime
+    end_time: Optional[datetime] = None
 
 class PointRechargePayload(BaseModel):
     amount: int = Field(..., ge=10, le=10000)
@@ -1858,7 +1858,8 @@ async def create_match(
 ):
     if payload.status == MatchStatus.finished:
         raise HTTPException(status_code=400, detail="Hãy dùng chức năng giải trận để kết thúc trận.")
-    if payload.end_time <= payload.start_time:
+    end_time = payload.end_time or (payload.start_time + MATCH_DEFAULT_DURATION)
+    if end_time <= payload.start_time:
         raise HTTPException(status_code=400, detail="Giờ kết thúc phải sau giờ bắt đầu.")
 
     try:
@@ -1870,7 +1871,7 @@ async def create_match(
             handicap=payload.handicap,
             status=payload.status,
             start_time=payload.start_time,
-            end_time=payload.end_time,
+            end_time=end_time,
         )
         db.add(match)
         await db.commit()
@@ -2101,7 +2102,8 @@ async def update_match(
         raise HTTPException(status_code=400, detail="Không thể sửa trận đã giải.")
     if payload.status == MatchStatus.finished:
         raise HTTPException(status_code=400, detail="Hãy dùng chức năng giải trận để kết thúc trận.")
-    if payload.end_time <= payload.start_time:
+    end_time = payload.end_time or (payload.start_time + MATCH_DEFAULT_DURATION)
+    if end_time <= payload.start_time:
         raise HTTPException(status_code=400, detail="Giờ kết thúc phải sau giờ bắt đầu.")
 
     try:
@@ -2112,7 +2114,7 @@ async def update_match(
         match.handicap = payload.handicap
         match.status = payload.status
         match.start_time = payload.start_time
-        match.end_time = payload.end_time
+        match.end_time = end_time
         db.add(match)
         await db.commit()
         await db.refresh(match)
