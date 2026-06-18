@@ -61,6 +61,8 @@ class ProfileStatusPost(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     content = Column(String, nullable=False)
+    post_type = Column(String, nullable=False, default="text")
+    match_id = Column(Integer, ForeignKey("matches.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
 

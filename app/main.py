@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -44,7 +44,10 @@ ASSET_VERSION = str(
         int(Path("static/js/app.js").stat().st_mtime),
         int(Path("static/js/app-taunt.js").stat().st_mtime),
         int(Path("static/js/admin.js").stat().st_mtime),
+        int(Path("static/js/community.js").stat().st_mtime),
+        int(Path("static/js/match-detail.js").stat().st_mtime),
         int(Path("static/js/profile.js").stat().st_mtime),
+        int(Path("static/js/timeline.js").stat().st_mtime),
     )
 )
 
@@ -71,7 +74,11 @@ MAX_PROFILE_NAME_LENGTH = 30
 MAX_TAUNT_LENGTH = 30
 MAX_PROFILE_STATUS_LENGTH = 160
 MAX_PROFILE_TIMELINE_ITEMS = 20
+DEFAULT_PROFILE_TIMELINE_PAGE_SIZE = 10
+MAX_PROFILE_TIMELINE_PAGE_SIZE = 20
 MAX_HOMEPAGE_ANNOUNCEMENT_LENGTH = 280
+PROFILE_POST_TYPE_TEXT = "text"
+PROFILE_POST_TYPE_MATCH_REACTION = "match_reaction"
 
 
 def _format_coins(value: int) -> str:
@@ -117,11 +124,78 @@ def _normalize_optional_profile_status(value: Optional[str]) -> Optional[str]:
     return text
 
 
-def _serialize_profile_status_post(post: ProfileStatusPost) -> dict:
+def _normalize_timeline_limit(limit: int) -> int:
+    return max(1, min(limit, MAX_PROFILE_TIMELINE_PAGE_SIZE))
+
+
+def _serialize_profile_status_match(match: Optional[Match]) -> Optional[dict]:
+    if match is None:
+        return None
+    return {
+        "id": match.id,
+        "home_team": match.home_team,
+        "home_icon": match.home_icon,
+        "away_team": match.away_team,
+        "away_icon": match.away_icon,
+        "home_score": match.home_score,
+        "away_score": match.away_score,
+        "status": match.status,
+        "result_published": bool(getattr(match, "resolved_at", None)),
+    }
+
+
+def _serialize_profile_status_post(
+    post: ProfileStatusPost,
+    *,
+    author: Optional[User] = None,
+    match: Optional[Match] = None,
+) -> dict:
     return {
         "id": post.id,
+        "post_type": (post.post_type or PROFILE_POST_TYPE_TEXT),
         "content": post.content,
         "created_at": post.created_at.isoformat() if post.created_at else None,
+        "author": _user_avatar_payload(author) if author is not None else None,
+        "match": _serialize_profile_status_match(match),
+    }
+
+
+async def _list_profile_status_posts(
+    db: AsyncSession,
+    *,
+    user_id: Optional[UUID] = None,
+    offset: int = 0,
+    limit: int = DEFAULT_PROFILE_TIMELINE_PAGE_SIZE,
+) -> dict:
+    safe_offset = max(0, offset)
+    safe_limit = _normalize_timeline_limit(limit)
+    query = (
+        select(ProfileStatusPost, User, Match)
+        .join(User, ProfileStatusPost.user_id == User.id)
+        .outerjoin(Match, ProfileStatusPost.match_id == Match.id)
+    )
+    if user_id is not None:
+        query = query.where(ProfileStatusPost.user_id == user_id)
+    query = (
+        query
+        .order_by(desc(ProfileStatusPost.created_at), desc(ProfileStatusPost.id))
+        .offset(safe_offset)
+        .limit(safe_limit + 1)
+    )
+    rows = (await db.execute(query)).all()
+    page_rows = rows[:safe_limit]
+    items = [
+        _serialize_profile_status_post(
+            row.ProfileStatusPost,
+            author=row.User,
+            match=row.Match,
+        )
+        for row in page_rows
+    ]
+    next_offset = safe_offset + safe_limit if len(rows) > safe_limit else None
+    return {
+        "items": items,
+        "next_offset": next_offset,
     }
 
 
@@ -131,15 +205,13 @@ async def _get_profile_status_timeline(
     *,
     limit: int = MAX_PROFILE_TIMELINE_ITEMS,
 ) -> list[dict]:
-    rows = (
-        await db.execute(
-            select(ProfileStatusPost)
-            .where(ProfileStatusPost.user_id == user_id)
-            .order_by(desc(ProfileStatusPost.created_at), desc(ProfileStatusPost.id))
-            .limit(limit)
-        )
-    ).scalars().all()
-    return [_serialize_profile_status_post(row) for row in rows]
+    page = await _list_profile_status_posts(
+        db,
+        user_id=user_id,
+        offset=0,
+        limit=min(limit, MAX_PROFILE_TIMELINE_ITEMS),
+    )
+    return page["items"]
 
 
 async def _create_profile_status_post(
@@ -148,16 +220,40 @@ async def _create_profile_status_post(
     content: str,
     *,
     created_at: Optional[datetime] = None,
+    post_type: str = PROFILE_POST_TYPE_TEXT,
+    match: Optional[Match] = None,
 ) -> ProfileStatusPost:
     post = ProfileStatusPost(
         user_id=user.id,
         content=content,
+        post_type=post_type,
+        match_id=match.id if match is not None else None,
         created_at=created_at or datetime.utcnow(),
     )
     user.profile_status = content
     db.add(post)
     db.add(user)
     return post
+
+
+async def _has_match_reaction_post(
+    db: AsyncSession,
+    *,
+    user_id: UUID,
+    match_id: int,
+) -> bool:
+    existing = (
+        await db.execute(
+            select(ProfileStatusPost.id)
+            .where(
+                ProfileStatusPost.user_id == user_id,
+                ProfileStatusPost.match_id == match_id,
+                ProfileStatusPost.post_type == PROFILE_POST_TYPE_MATCH_REACTION,
+            )
+            .limit(1)
+        )
+    ).scalar()
+    return existing is not None
 
 
 async def _backfill_profile_status_timeline(db: AsyncSession) -> None:
@@ -454,6 +550,26 @@ async def startup_event():
         if "profile_status" not in user_column_names:
             await conn.exec_driver_sql("ALTER TABLE users ADD COLUMN profile_status VARCHAR")
 
+        profile_status_columns = (
+            await conn.exec_driver_sql("PRAGMA table_info(profile_status_posts)")
+        ).fetchall()
+        profile_status_column_names = {row[1] for row in profile_status_columns}
+        if "post_type" not in profile_status_column_names:
+            await conn.exec_driver_sql(
+                "ALTER TABLE profile_status_posts ADD COLUMN post_type VARCHAR DEFAULT 'text'"
+            )
+        if "match_id" not in profile_status_column_names:
+            await conn.exec_driver_sql(
+                "ALTER TABLE profile_status_posts ADD COLUMN match_id INTEGER"
+            )
+        await conn.exec_driver_sql(
+            """
+            UPDATE profile_status_posts
+            SET post_type = 'text'
+            WHERE post_type IS NULL OR trim(post_type) = ''
+            """
+        )
+
         bet_columns = (
             await conn.exec_driver_sql("PRAGMA table_info(bets)")
         ).fetchall()
@@ -634,6 +750,15 @@ async def read_profile(request: Request, user: User = Depends(get_current_user))
     )
 
 
+@app.get("/community", response_class=HTMLResponse)
+async def read_community(request: Request, user: User = Depends(get_current_user)):
+    return templates.TemplateResponse(
+        "community.html",
+        {"request": request, "asset_version": ASSET_VERSION},
+        headers=NO_CACHE_HEADERS,
+    )
+
+
 @app.get("/api/v1/me")
 async def get_me(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     return await _build_profile_payload(user, db=db, include_badge=True)
@@ -667,6 +792,38 @@ async def get_public_user_profile(
     return payload
 
 
+@app.get("/api/v1/me/timeline")
+async def get_my_timeline(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(DEFAULT_PROFILE_TIMELINE_PAGE_SIZE, ge=1, le=MAX_PROFILE_TIMELINE_PAGE_SIZE),
+):
+    return await _list_profile_status_posts(db, user_id=user.id, offset=offset, limit=limit)
+
+
+@app.get("/api/v1/users/{user_id}/timeline")
+async def get_public_user_timeline(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(DEFAULT_PROFILE_TIMELINE_PAGE_SIZE, ge=1, le=MAX_PROFILE_TIMELINE_PAGE_SIZE),
+):
+    target_user = await _get_user_by_id(db, user_id)
+    return await _list_profile_status_posts(db, user_id=target_user.id, offset=offset, limit=limit)
+
+
+@app.get("/api/v1/community/timeline")
+async def get_community_timeline(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(DEFAULT_PROFILE_TIMELINE_PAGE_SIZE, ge=1, le=MAX_PROFILE_TIMELINE_PAGE_SIZE),
+):
+    return await _list_profile_status_posts(db, offset=offset, limit=limit)
+
+
 @app.get("/api/v1/users/{user_id}/bets")
 async def get_public_user_bets(
     user_id: str,
@@ -674,6 +831,7 @@ async def get_public_user_bets(
     db: AsyncSession = Depends(get_db),
 ):
     target_user = await _get_user_by_id(db, user_id)
+    is_self = target_user.id == current_user.id
     query = (
         select(Bet, Match)
         .join(Match, Bet.match_id == Match.id)
@@ -681,25 +839,19 @@ async def get_public_user_bets(
         .order_by(Bet.created_at.desc())
     )
     rows = (await db.execute(query)).all()
+    reacted_match_ids = await _get_match_reaction_match_ids(
+        db,
+        user_id=target_user.id,
+        match_ids=[row.Match.id for row in rows],
+    )
     return [
-        {
-            "bet_id": r.Bet.id,
-            "match_id": r.Match.id,
-            "home_team": r.Match.home_team,
-            "home_icon": r.Match.home_icon,
-            "away_team": r.Match.away_team,
-            "away_icon": r.Match.away_icon,
-            "match_status": r.Match.status,
-            "home_score": r.Match.home_score,
-            "away_score": r.Match.away_score,
-            "handicap": r.Match.handicap,
-            "start_time": r.Match.start_time.isoformat(),
-            "choice": r.Bet.choice,
-            "stake": r.Bet.stake,
-            "points_earned": r.Bet.points_earned,
-            "created_at": r.Bet.created_at.isoformat(),
-        }
-        for r in rows
+        _serialize_bet_history_entry(
+            bet=row.Bet,
+            match=row.Match,
+            can_share_reaction=is_self and _match_result_published(row.Match) and row.Match.id not in reacted_match_ids,
+            has_shared_reaction=row.Match.id in reacted_match_ids,
+        )
+        for row in rows
     ]
 @app.get("/api/v1/settings")
 async def get_public_settings(db: AsyncSession = Depends(get_db)):
@@ -716,6 +868,7 @@ class UpdateProfilePayload(BaseModel):
 
 class ProfileStatusPostPayload(BaseModel):
     content: str = Field(..., max_length=MAX_PROFILE_STATUS_LENGTH)
+    match_id: Optional[int] = None
 
 @app.post("/api/v1/me/update-legacy")
 async def update_me(
@@ -796,13 +949,45 @@ async def create_profile_status(
     if content is None:
         raise HTTPException(status_code=400, detail="Trạng thái không được để trống.")
 
-    post = await _create_profile_status_post(db, user, content)
+    match = None
+    post_type = PROFILE_POST_TYPE_TEXT
+    if payload.match_id is not None:
+        match = (
+            await db.execute(
+                select(Match).where(Match.id == payload.match_id)
+            )
+        ).scalars().first()
+        if not match:
+            raise HTTPException(status_code=404, detail="Trận đấu không tồn tại.")
+        if not _match_result_published(match):
+            raise HTTPException(status_code=400, detail="Chỉ được chia sẻ khi trận đã có kết quả chính thức.")
+
+        bet = (
+            await db.execute(
+                select(Bet.id)
+                .where(Bet.user_id == user.id, Bet.match_id == match.id)
+                .limit(1)
+            )
+        ).scalar()
+        if bet is None:
+            raise HTTPException(status_code=400, detail="Bạn chưa đặt cược trận này nên chưa thể chia sẻ.")
+        if await _has_match_reaction_post(db, user_id=user.id, match_id=match.id):
+            raise HTTPException(status_code=400, detail="Bạn đã chia sẻ cảm nghĩ cho trận này rồi.")
+        post_type = PROFILE_POST_TYPE_MATCH_REACTION
+
+    post = await _create_profile_status_post(
+        db,
+        user,
+        content,
+        post_type=post_type,
+        match=match,
+    )
     await db.commit()
     await db.refresh(post)
     await db.refresh(user)
 
     return {
-        "status_post": _serialize_profile_status_post(post),
+        "status_post": _serialize_profile_status_post(post, author=user, match=match),
         "status_timeline": await _get_profile_status_timeline(db, user.id),
         "profile_status": user.profile_status,
     }
@@ -887,25 +1072,19 @@ async def get_my_bets(user: User = Depends(get_current_user), db: AsyncSession =
         .order_by(Bet.created_at.desc())
     )
     rows = (await db.execute(query)).all()
+    reacted_match_ids = await _get_match_reaction_match_ids(
+        db,
+        user_id=user.id,
+        match_ids=[row.Match.id for row in rows],
+    )
     return [
-        {
-            "bet_id": r.Bet.id,
-            "match_id": r.Match.id,
-            "home_team": r.Match.home_team,
-            "home_icon": r.Match.home_icon,
-            "away_team": r.Match.away_team,
-            "away_icon": r.Match.away_icon,
-            "match_status": r.Match.status,
-            "home_score": r.Match.home_score,
-            "away_score": r.Match.away_score,
-            "handicap": r.Match.handicap,
-            "start_time": r.Match.start_time.isoformat(),
-            "choice": r.Bet.choice,
-            "stake": r.Bet.stake,
-            "points_earned": r.Bet.points_earned,
-            "created_at": r.Bet.created_at.isoformat(),
-        }
-        for r in rows
+        _serialize_bet_history_entry(
+            bet=row.Bet,
+            match=row.Match,
+            can_share_reaction=_match_result_published(row.Match) and row.Match.id not in reacted_match_ids,
+            has_shared_reaction=row.Match.id in reacted_match_ids,
+        )
+        for row in rows
     ]
 
 
@@ -1460,6 +1639,10 @@ async def update_admin_user_points(
     }
 
 
+def _match_result_published(match: Match) -> bool:
+    return match.status == MatchStatus.finished and bool(getattr(match, "resolved_at", None))
+
+
 # GET /api/v1/admin/matches — Danh sách tất cả trận đấu cho Admin
 def _match_response(match: Match):
     return {
@@ -1474,7 +1657,7 @@ def _match_response(match: Match):
         "status": match.status,
         "start_time": match.start_time.isoformat(),
         "end_time": _match_effective_end_time(match).isoformat() if match.start_time else None,
-        "result_published": bool(getattr(match, "resolved_at", None)),
+        "result_published": _match_result_published(match),
         "resolved_at": match.resolved_at.isoformat() if getattr(match, "resolved_at", None) else None,
     }
 
@@ -1494,11 +1677,63 @@ def _user_initials(user: User) -> str:
 def _user_avatar_payload(user: User) -> dict:
     display_name = _user_display_name(user)
     return {
+        "id": str(user.id),
         "name": display_name,
         "display_name": display_name,
         "avatar_url": user.avatar_url,
         "avatar_color": user.avatar_color or "#6366f1",
         "initials": _user_initials(user),
+    }
+
+
+async def _get_match_reaction_match_ids(
+    db: AsyncSession,
+    *,
+    user_id: UUID,
+    match_ids: list[int],
+) -> set[int]:
+    if not match_ids:
+        return set()
+    rows = (
+        await db.execute(
+            select(ProfileStatusPost.match_id)
+            .where(
+                ProfileStatusPost.user_id == user_id,
+                ProfileStatusPost.post_type == PROFILE_POST_TYPE_MATCH_REACTION,
+                ProfileStatusPost.match_id.in_(match_ids),
+            )
+            .distinct()
+        )
+    ).scalars().all()
+    return {match_id for match_id in rows if match_id is not None}
+
+
+def _serialize_bet_history_entry(
+    *,
+    bet: Bet,
+    match: Match,
+    can_share_reaction: bool,
+    has_shared_reaction: bool,
+) -> dict:
+    return {
+        "bet_id": bet.id,
+        "match_id": match.id,
+        "home_team": match.home_team,
+        "home_icon": match.home_icon,
+        "away_team": match.away_team,
+        "away_icon": match.away_icon,
+        "match_status": match.status,
+        "home_score": match.home_score,
+        "away_score": match.away_score,
+        "handicap": match.handicap,
+        "start_time": match.start_time.isoformat(),
+        "choice": bet.choice,
+        "stake": bet.stake,
+        "points_earned": bet.points_earned,
+        "created_at": bet.created_at.isoformat(),
+        "result_published": _match_result_published(match),
+        "can_share_reaction": can_share_reaction,
+        "has_shared_reaction": has_shared_reaction,
     }
 
 

@@ -1,13 +1,18 @@
-// ─── State ───────────────────────────────────────────────────────────────────
-let _profileData  = null;
-let _selectedFile = null;
-let openCardId    = null;
-let _rechargeRequests = [];
+const PROFILE_NO_CACHE_FETCH_OPTIONS = { cache: "no-store" };
+
+let viewerData = null;
+let profileData = null;
+let profileBets = [];
+let selectedReactionBet = null;
+let selectedAvatarFile = null;
+let timelineNextOffset = 0;
+let timelineLoading = false;
+
 const PROFILE_USER_ID = new URLSearchParams(window.location.search).get("user_id") || "";
 const IS_OWN_PROFILE = !PROFILE_USER_ID;
 
 function escapeHtml(value) {
-    return String(value ?? "").replace(/[&<>"']/g, ch => ({
+    return String(value ?? "").replace(/[&<>\"']/g, ch => ({
         "&": "&amp;",
         "<": "&lt;",
         ">": "&gt;",
@@ -36,6 +41,19 @@ function formatCoins(value) {
     return `${Number(value || 0).toLocaleString()}đ`;
 }
 
+function formatProfileTime(value) {
+    if (!value) return "Không rõ thời gian";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Không rõ thời gian";
+    return date.toLocaleString("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+}
+
 function renderBadge(badge) {
     if (!badge) return "";
     return `<span class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold ${
@@ -46,497 +64,113 @@ function renderBadge(badge) {
     }">${escapeHtml(badge.emoji)} ${escapeHtml(badge.label)}</span>`;
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-    fetchProfile();
-    fetchBetHistory();
-    fetchRechargeRequests();
-    initAvatarModal();
-    initNameModal();
-    initRechargeModal();
-});
-
-// ─── Fetch & render profile ───────────────────────────────────────────────────
-async function fetchProfile() {
-    try {
-        const url = PROFILE_USER_ID
-            ? `/api/v1/users/${encodeURIComponent(PROFILE_USER_ID)}`
-            : "/api/v1/me";
-        const res = await fetch(url);
-        if (!res.ok) return;
-        const data = await res.json();
-        _profileData = data;
-        applyProfileUI(data);
-        if (data.can_edit !== false) {
-            fetchRechargeRequests();
-        }
-    } catch (err) {
-        console.error("fetchProfile error:", err);
-    }
+function renderHeaderUserInfo() {
+    const host = document.getElementById("user-info");
+    if (!host || !viewerData) return;
+    const displayName = viewerData.display_name || viewerData.email.split("@")[0];
+    const avatarSrc = normalizeImageSrc(viewerData.avatar_url);
+    const avatarHtml = avatarSrc
+        ? `<img src="${safeImageSrc(viewerData.avatar_url)}" alt="" class="h-5 w-5 rounded-full border border-sky-300 object-cover flex-shrink-0">`
+        : `<span class="flex h-5 w-5 items-center justify-center rounded-full border border-sky-300 text-[9px] font-black text-white flex-shrink-0" style="background:${safeCssColor(viewerData.avatar_color)}">${escapeHtml(viewerData.initials || "??")}</span>`;
+    host.title = viewerData.email;
+    host.innerHTML = `
+        <span class="inline-flex max-w-full items-center gap-2">
+            ${avatarHtml}
+            <span class="max-w-[8rem] truncate font-semibold text-slate-900">${escapeHtml(displayName)}</span>
+            <span class="text-slate-300">|</span>
+            <span class="font-bold text-[#D3af37]">${Number(viewerData.total_points || 0).toLocaleString()}</span><span class="text-[#D3af37]">d</span>
+        </span>`;
 }
 
-function headerAvatarHtml({ avatar_url, avatar_color, initials }) {
-    const avatarSrc = safeImageSrc(avatar_url);
-    if (avatarSrc) {
-        return `<img src="${avatarSrc}" style="width:20px;height:20px;border-radius:50%;object-fit:cover;
-                     border:1px solid #38bdf8;vertical-align:middle;margin-right:5px;">`;
-    }
-    return `<span style="width:20px;height:20px;border-radius:50%;background:${safeCssColor(avatar_color)};
-                  display:inline-flex;align-items:center;justify-content:center;
-                  font-size:9px;font-weight:900;color:#fff;vertical-align:middle;
-                  margin-right:5px;">${escapeHtml(initials || "??")}</span>`;
+function applyNavState() {
+    const profileLink = document.getElementById("nav-profile");
+    const profileLabel = document.getElementById("nav-profile-label");
+    if (!profileLink || !profileLabel) return;
+    const isActiveProfile = IS_OWN_PROFILE && profileData?.can_edit !== false;
+    profileLink.classList.toggle("text-sky-600", isActiveProfile);
+    profileLink.classList.toggle("text-slate-500", !isActiveProfile);
+    profileLink.classList.toggle("hover:text-sky-600", !isActiveProfile);
+    profileLabel.classList.toggle("font-semibold", isActiveProfile);
 }
 
 function renderAvatar({ avatar_url, avatar_color, initials }) {
     const initialsEl = document.getElementById("avatar-initials");
-    const imgEl      = document.getElementById("avatar-img");
+    const imgEl = document.getElementById("avatar-img");
+    if (!initialsEl || !imgEl) return;
     const avatarSrc = normalizeImageSrc(avatar_url);
     if (avatarSrc) {
         imgEl.src = avatarSrc;
         imgEl.classList.remove("hidden");
         initialsEl.classList.add("hidden");
-    } else {
-        initialsEl.textContent     = initials || "??";
-        initialsEl.style.background = safeCssColor(avatar_color);
-        initialsEl.classList.remove("hidden");
-        imgEl.classList.add("hidden");
-    }
-}
-
-// ─── Avatar Modal ─────────────────────────────────────────────────────────────
-function initAvatarModal() {
-    const modal     = document.getElementById("avatar-modal");
-    const openBtn   = document.getElementById("open-avatar-modal");
-    const closeBtn  = document.getElementById("close-avatar-modal");
-    const cancelBtn = document.getElementById("btn-avatar-cancel");
-    const saveBtn   = document.getElementById("btn-avatar-save");
-    const dropZone  = document.getElementById("avatar-drop-zone");
-    const fileInput = document.getElementById("avatar-file-input");
-    const preview   = document.getElementById("avatar-preview");
-    const hint      = document.getElementById("drop-hint");
-    const errorEl   = document.getElementById("avatar-error");
-    const progressEl= document.getElementById("avatar-progress");
-
-    const open  = () => { modal.classList.add("show"); reset(); };
-    const close = () => { modal.classList.remove("show"); reset(); };
-
-    function reset() {
-        _selectedFile = null;
-        preview.classList.remove("show"); preview.src = "";
-        hint.style.display = "";
-        saveBtn.disabled   = true;
-        errorEl.classList.add("hidden"); errorEl.textContent = "";
-        progressEl.classList.remove("show");
-        fileInput.value = "";
-    }
-
-    function setFile(file) {
-        if (!file) return;
-        if (!file.type.startsWith("image/")) {
-            return showErr(errorEl, "Chỉ chấp nhận file ảnh.");
-        }
-        if (file.size > 5 * 1024 * 1024) {
-            return showErr(errorEl, "Ảnh quá lớn, tối đa 5MB.");
-        }
-        _selectedFile = file;
-        const reader  = new FileReader();
-        reader.onload = e => {
-            preview.src = e.target.result;
-            preview.classList.add("show");
-            hint.style.display = "none";
-        };
-        reader.readAsDataURL(file);
-        saveBtn.disabled = false;
-        errorEl.classList.add("hidden");
-    }
-
-    openBtn.addEventListener("click", open);
-    closeBtn.addEventListener("click", close);
-    cancelBtn.addEventListener("click", close);
-    modal.addEventListener("click", e => { if (e.target === modal) close(); });
-
-    dropZone.addEventListener("click", () => fileInput.click());
-    dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("dragover"); });
-    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
-    dropZone.addEventListener("drop", e => {
-        e.preventDefault(); dropZone.classList.remove("dragover");
-        setFile(e.dataTransfer.files[0]);
-    });
-    fileInput.addEventListener("change", () => setFile(fileInput.files[0]));
-
-    saveBtn.addEventListener("click", async () => {
-        if (!_selectedFile) return;
-        saveBtn.disabled = true;
-        progressEl.classList.add("show");
-        errorEl.classList.add("hidden");
-
-        try {
-            const form = new FormData();
-            form.append("file", _selectedFile);
-
-            const res = await fetch("/api/v1/me/avatar", { method: "POST", body: form });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.detail || `Lỗi ${res.status}`);
-            }
-            const { avatar_url } = await res.json();
-
-            // Cập nhật UI ngay không cần reload
-            const safeAvatarUrl = normalizeImageSrc(avatar_url);
-            _profileData.avatar_url = safeAvatarUrl;
-            const imgEl      = document.getElementById("avatar-img");
-            const initialsEl = document.getElementById("avatar-initials");
-            imgEl.src        = safeAvatarUrl + "?t=" + Date.now();
-            imgEl.classList.remove("hidden");
-            initialsEl.classList.add("hidden");
-            // Cập nhật header mini avatar
-            applyProfileUI({ ..._profileData, avatar_url: safeAvatarUrl });
-            close();
-        } catch (err) {
-            showErr(errorEl, err.message || "Lỗi không xác định.");
-            saveBtn.disabled = false;
-            progressEl.classList.remove("show");
-        }
-    });
-
-    document.addEventListener("keydown", e => {
-        if (e.key === "Escape" && modal.classList.contains("show")) close();
-    });
-}
-
-// ─── Display Name Modal ───────────────────────────────────────────────────────
-function initNameModal() {
-    const modal     = document.getElementById("name-modal");
-    const openBtn   = document.getElementById("open-name-modal");
-    const closeBtn  = document.getElementById("close-name-modal");
-    const cancelBtn = document.getElementById("btn-name-cancel");
-    const saveBtn   = document.getElementById("btn-name-save");
-    const input     = document.getElementById("name-input");
-    const counter   = document.getElementById("name-char-count");
-    const errorEl   = document.getElementById("name-error");
-
-    const open = () => {
-        modal.classList.add("show");
-        input.value      = _profileData?.display_name || "";
-        counter.textContent = input.value.length;
-        errorEl.classList.add("hidden");
-        setTimeout(() => input.focus(), 80);
-    };
-    const close = () => modal.classList.remove("show");
-
-    openBtn.addEventListener("click", open);
-    closeBtn.addEventListener("click", close);
-    cancelBtn.addEventListener("click", close);
-    modal.addEventListener("click", e => { if (e.target === modal) close(); });
-
-    input.addEventListener("input", () => {
-        const len = input.value.length;
-        counter.textContent = len;
-        counter.parentElement.classList.toggle("warn", len > 25);
-    });
-
-    saveBtn.addEventListener("click", async () => {
-        const name = input.value.trim();
-        if (!name) return showErr(errorEl, "Tên không được để trống.");
-        if (name.length > 30) return showErr(errorEl, "Tối đa 30 ký tự.");
-
-        saveBtn.disabled = true;
-        saveBtn.textContent = "Đang lưu...";
-        errorEl.classList.add("hidden");
-
-        try {
-            const res = await fetch("/api/v1/me/update", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ display_name: name }),
-            });
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                throw new Error(body.detail || `Lỗi ${res.status}`);
-            }
-            const data = await res.json();
-            _profileData = { ..._profileData, ...data };
-            applyProfileUI(_profileData);
-            close();
-        } catch (err) {
-            showErr(errorEl, err.message || "Lỗi không xác định.");
-        } finally {
-            saveBtn.disabled    = false;
-            saveBtn.textContent = "Lưu tên";
-        }
-    });
-
-    // Enter để lưu
-    input.addEventListener("keydown", e => { if (e.key === "Enter") saveBtn.click(); });
-
-    document.addEventListener("keydown", e => {
-        if (e.key === "Escape" && modal.classList.contains("show")) close();
-    });
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-function showErr(el, msg) {
-    el.textContent = msg;
-    el.classList.remove("hidden");
-}
-
-// ─── Bet History ─────────────────────────────────────────────────────────────
-async function fetchBetHistory() {
-    const listEl = document.getElementById("bet-list");
-    try {
-        const url = PROFILE_USER_ID
-            ? `/api/v1/users/${encodeURIComponent(PROFILE_USER_ID)}/bets`
-            : "/api/v1/me/bets";
-        const res = await fetch(url);
-        if (!res.ok) {
-            listEl.innerHTML = `<div class="text-center text-red-400 py-8 text-sm">Không thể tải lịch sử cược.</div>`;
-            return;
-        }
-        const bets = await res.json();
-        renderStats(bets);
-        renderBets(bets, listEl);
-    } catch (err) {
-        console.error(err);
-        listEl.innerHTML = `<div class="text-center text-red-400 py-8 text-sm">Lỗi kết nối.</div>`;
-    }
-}
-
-function renderStats(bets) {
-    const finished = bets.filter(b => b.match_status === "finished");
-    const wins     = finished.filter(b => b.points_earned > 0);
-    const loses    = finished.filter(b => b.points_earned === 0);
-    document.getElementById("stat-total").textContent = bets.length;
-    document.getElementById("stat-win").textContent   = wins.length;
-    document.getElementById("stat-lose").textContent  = loses.length;
-}
-
-// ─── Bet Cards ───────────────────────────────────────────────────────────────
-function renderBets(bets, listEl) {
-    if (bets.length === 0) {
-        listEl.innerHTML = `
-            <div class="text-center py-12 text-slate-500 text-sm">
-                <div class="text-4xl mb-3">🎯</div>
-                <div>Bạn chưa đặt cược lần nào.</div>
-                <a href="/" class="text-sky-600 text-sm mt-2 inline-block hover:underline">Xem trận đấu ngay →</a>
-            </div>`;
         return;
     }
-
-    listEl.innerHTML = bets.map(b => {
-        const isFinished = b.match_status === "finished";
-        const isRefunded = isFinished && b.points_earned === null;
-        const isWin      = isFinished && b.points_earned > 0;
-
-        const badgeHtml = !isFinished
-            ? `<span class="badge-pending text-xs px-2 py-0.5 rounded-full font-semibold">Đang chờ</span>`
-            : isRefunded
-                ? `<span class="badge-refund text-xs px-2 py-0.5 rounded-full font-semibold">Hoàn điểm</span>`
-                : isWin
-                ? `<span class="badge-win  text-xs px-2 py-0.5 rounded-full font-semibold">✅ Thắng</span>`
-                : `<span class="badge-lose text-xs px-2 py-0.5 rounded-full font-semibold">❌ Thua</span>`;
-
-        const choiceLabel  = escapeHtml({ HOME: "Chủ nhà", DRAW: "Hòa", AWAY: "Khách" }[b.choice] || b.choice);
-        const homeIconSrc  = safeImageSrc(b.home_icon);
-        const awayIconSrc  = safeImageSrc(b.away_icon);
-        const homeIconHtml = homeIconSrc ? `<img src="${homeIconSrc}" class="w-4 h-4 inline-block rounded-full mr-1">` : "";
-        const awayIconHtml = awayIconSrc ? `<img src="${awayIconSrc}" class="w-4 h-4 inline-block rounded-full ml-1">` : "";
-        const homeTeam     = escapeHtml(b.home_team);
-        const awayTeam     = escapeHtml(b.away_team);
-        const scoreOrVs    = isFinished
-            ? `<span class="font-black text-slate-900">${b.home_score} - ${b.away_score}</span>`
-            : `<span class="text-slate-400 font-bold">vs</span>`;
-
-        return `
-        <div>
-            <div class="bet-card bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-3 shadow-sm"
-                 id="card-${b.bet_id}" onclick="toggleDetail(${b.bet_id})">
-                <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-1 text-sm font-semibold text-slate-900 mb-1 truncate">
-                        ${homeIconHtml}${homeTeam}
-                        <span class="mx-1 text-slate-400 text-xs font-normal">${scoreOrVs}</span>
-                        ${awayTeam}${awayIconHtml}
-                    </div>
-                    <div class="flex items-center gap-2 text-xs text-slate-500">
-                        <span>Chọn:</span>
-                        <span class="font-medium text-slate-700">${choiceLabel}</span>
-                        <span class="text-slate-300">•</span>
-                        <span class="text-[#D3af37] font-semibold">${formatCoins(b.stake)}</span>
-                    </div>
-                </div>
-                <div class="flex flex-col items-end gap-1 flex-shrink-0">
-                    ${badgeHtml}
-                    <svg id="arrow-${b.bet_id}" class="w-4 h-4 text-slate-400 transform transition-transform duration-200"
-                         fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                    </svg>
-                </div>
-            </div>
-            <div id="detail-${b.bet_id}" class="hidden detail-panel border-x border-b border-slate-200 rounded-b-xl px-4 pt-3 pb-4 -mt-1 bg-white shadow-sm">
-                ${renderDetail(b)}
-            </div>
-        </div>`;
-    }).join("");
+    initialsEl.textContent = initials || "??";
+    initialsEl.style.background = safeCssColor(avatar_color);
+    initialsEl.classList.remove("hidden");
+    imgEl.classList.add("hidden");
 }
 
-function renderDetail(b) {
-    const isFinished  = b.match_status === "finished";
-    const isRefunded  = isFinished && b.points_earned === null;
-    const isWin       = isFinished && b.points_earned > 0;
-    const choiceLabel = escapeHtml({ HOME: "Chủ nhà 🏠", DRAW: "Hòa 🤝", AWAY: "Khách ✈️" }[b.choice] || b.choice);
-    const homeTeam    = escapeHtml(b.home_team);
-    const awayTeam    = escapeHtml(b.away_team);
-    const hcSign      = b.handicap > 0 ? "+" : "";
-    const fmt = dt => new Date(dt).toLocaleString("vi-VN", {
-        day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"
-    });
+function applyProfileUI() {
+    if (!profileData) return;
+    const fallbackName = profileData.email ? profileData.email.split("@")[0] : (profileData.initials || "User");
+    const shortName = profileData.display_name || fallbackName;
+    const emailEl = document.getElementById("profile-email");
+    const badgeHost = document.getElementById("profile-badge");
+    const editable = profileData.can_edit !== false;
 
-    const resultHtml = isFinished
-        ? isRefunded
-            ? `<div class="flex justify-between"><span class="text-slate-500">Kết quả</span>
-               <span class="font-semibold text-[#D3af37]">Hoàn ${formatCoins(b.stake)}</span></div>`
-            : isWin
-            ? `<div class="flex justify-between"><span class="text-slate-500">điểm nhận về</span>
-               <span class="font-black text-[#D3af37] text-base">+${formatCoins(b.points_earned)}</span></div>`
-            : `<div class="flex justify-between"><span class="text-slate-500">Kết quả</span>
-               <span class="font-semibold text-[#D3af37]">Mất ${formatCoins(b.stake)}</span></div>`
-        : `<div class="flex justify-between"><span class="text-slate-500">Kết quả</span>
-           <span class="text-indigo-600 font-semibold">Đang chờ kết quả...</span></div>`;
-
-    return `<div class="space-y-2 text-sm text-slate-700">
-        <div class="flex justify-between"><span class="text-slate-500">Trận đấu</span><span class="font-semibold text-slate-900">${homeTeam} vs ${awayTeam}</span></div>
-        <div class="flex justify-between"><span class="text-slate-500">Kèo chấp</span><span class="text-slate-700">${hcSign}${b.handicap}</span></div>
-        ${isFinished ? `<div class="flex justify-between"><span class="text-slate-500">Tỉ số</span><span class="font-bold text-slate-900">${b.home_score} - ${b.away_score}</span></div>` : ""}
-        <div class="flex justify-between"><span class="text-slate-500">Lựa chọn</span><span class="font-semibold text-sky-700">${choiceLabel}</span></div>
-        <div class="flex justify-between"><span class="text-slate-500">Số điểm đặt</span><span class="text-[#D3af37] font-semibold">${formatCoins(b.stake)}</span></div>
-        <div class="border-t border-slate-200 pt-2 mt-2">${resultHtml}</div>
-        <div class="text-xs text-slate-400 pt-1">🗓 Trận: ${fmt(b.start_time)} &nbsp;•&nbsp; ⏱ Đặt: ${fmt(b.created_at)}</div>
-    </div>`;
-}
-
-function toggleDetail(betId) {
-    const detailEl = document.getElementById(`detail-${betId}`);
-    const cardEl   = document.getElementById(`card-${betId}`);
-    const arrowEl  = document.getElementById(`arrow-${betId}`);
-
-    if (openCardId && openCardId !== betId) {
-        document.getElementById(`detail-${openCardId}`)?.classList.add("hidden");
-        document.getElementById(`card-${openCardId}`)?.classList.remove("active");
-        document.getElementById(`arrow-${openCardId}`)?.classList.remove("rotate-180");
+    document.getElementById("profile-name").textContent = shortName;
+    document.getElementById("profile-points").textContent = Number(profileData.total_points || 0).toLocaleString();
+    if (emailEl) {
+        emailEl.textContent = editable && profileData.email ? profileData.email : "";
+        emailEl.classList.toggle("hidden", !(editable && profileData.email));
     }
-    const isOpen = !detailEl.classList.contains("hidden");
-    detailEl.classList.toggle("hidden", isOpen);
-    cardEl.classList.toggle("active", !isOpen);
-    arrowEl.classList.toggle("rotate-180", !isOpen);
-    openCardId = isOpen ? null : betId;
-}
-
-async function fetchRechargeRequests() {
-    const listEl = document.getElementById("recharge-list");
-    if (!listEl) return;
-    if (_profileData?.can_edit === false) {
-        const rechargeSection = document.getElementById("recharge-section");
-        if (rechargeSection) rechargeSection.classList.add("hidden");
-        return;
-    }
-    try {
-        const res = await fetch("/api/v1/me/recharge-requests");
-        if (!res.ok) {
-            listEl.innerHTML = `<div class="text-sm text-red-400 py-3">Khong the tai yeu cau nap diem.</div>`;
-            return;
-        }
-        _rechargeRequests = await res.json();
-        renderRechargeRequests(_rechargeRequests);
-    } catch (err) {
-        console.error(err);
-        listEl.innerHTML = `<div class="text-sm text-red-400 py-3">Loi ket noi.</div>`;
-    }
-}
-
-function renderRechargeRequests(requests) {
-    const listEl = document.getElementById("recharge-list");
-    if (!listEl) return;
-    if (!requests.length) {
-        listEl.innerHTML = `<div class="text-sm text-slate-500 py-3">Chua co yeu cau nap diem.</div>`;
-        return;
+    if (badgeHost) {
+        badgeHost.innerHTML = renderBadge(profileData.badge);
     }
 
-    listEl.innerHTML = requests.slice(0, 5).map(item => {
-        const isPending = item.status === "pending";
-        const badge = isPending
-            ? `<span class="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-50 text-amber-700 border border-amber-200">Dang cho</span>`
-            : `<span class="text-xs px-2 py-0.5 rounded-full font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">Da xac nhan</span>`;
-        const time = new Date(item.created_at).toLocaleString("vi-VN", {
-            day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"
-        });
-        return `
-            <div class="flex items-center justify-between gap-3 border border-slate-200 rounded-xl px-3 py-2 bg-slate-50">
-                <div class="min-w-0">
-                    <div class="font-black text-[#D3af37]">${Number(item.amount).toLocaleString()} diem</div>
-                    <div class="text-xs text-slate-500">${escapeHtml(time)}</div>
-                </div>
-                ${badge}
-            </div>`;
-    }).join("");
+    document.getElementById("open-avatar-modal")?.classList.toggle("hidden", !editable);
+    document.getElementById("open-name-modal")?.classList.toggle("hidden", !editable);
+    document.getElementById("profile-composer-section")?.classList.toggle("hidden", !editable);
+
+    const caption = document.getElementById("timeline-caption");
+    if (caption) {
+        caption.textContent = editable
+            ? "Nhật ký cảm xúc và chia sẻ gần đây."
+            : "Dòng thời gian công khai của thành viên này.";
+    }
+
+    renderAvatar(profileData);
+    applyNavState();
 }
 
-function initRechargeModal() {
-    const modal = document.getElementById("recharge-modal");
-    const openBtn = document.getElementById("open-recharge-modal");
-    const closeBtn = document.getElementById("close-recharge-modal");
-    const cancelBtn = document.getElementById("btn-recharge-cancel");
-    const saveBtn = document.getElementById("btn-recharge-save");
-    const input = document.getElementById("recharge-amount");
-    const errorEl = document.getElementById("recharge-error");
-    if (!modal || !openBtn || !closeBtn || !cancelBtn || !saveBtn || !input || !errorEl) return;
-
-    const open = () => {
-        modal.classList.add("show");
-        input.value = "";
-        errorEl.classList.add("hidden");
-        setTimeout(() => input.focus(), 80);
-    };
-    const close = () => modal.classList.remove("show");
-
-    openBtn.addEventListener("click", open);
-    closeBtn.addEventListener("click", close);
-    cancelBtn.addEventListener("click", close);
-    modal.addEventListener("click", e => { if (e.target === modal) close(); });
-
-    saveBtn.addEventListener("click", async () => {
-        const amount = Number(input.value);
-        if (!Number.isInteger(amount) || amount < 100 || amount > 10000) {
-            return showErr(errorEl, "Vui long nhap so diem tu 100 den 10000.");
-        }
-
-        saveBtn.disabled = true;
-        const oldText = saveBtn.textContent;
-        saveBtn.textContent = "Dang gui...";
-        errorEl.classList.add("hidden");
-
-        try {
-            const res = await fetch("/api/v1/me/recharge-requests", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ amount }),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.detail || `Loi ${res.status}`);
-            close();
-            await fetchRechargeRequests();
-        } catch (err) {
-            showErr(errorEl, err.message || "Khong the gui yeu cau nap diem.");
-        } finally {
-            saveBtn.disabled = false;
-            saveBtn.textContent = oldText;
-        }
-    });
-
-    input.addEventListener("keydown", e => { if (e.key === "Enter") saveBtn.click(); });
-    document.addEventListener("keydown", e => {
-        if (e.key === "Escape" && modal.classList.contains("show")) close();
-    });
+function renderStats() {
+    const finished = profileBets.filter(bet => String(bet.match_status || "").toLowerCase() === "finished" && bet.result_published);
+    const wins = finished.filter(bet => Number(bet.points_earned || 0) > 0);
+    const loses = finished.filter(bet => Number(bet.points_earned || 0) === 0);
+    document.getElementById("stat-total").textContent = String(profileBets.length);
+    document.getElementById("stat-win").textContent = String(wins.length);
+    document.getElementById("stat-lose").textContent = String(loses.length);
 }
 
-function setDefaultTauntStatus(message, tone = "neutral") {
+function renderTimelineState() {
+    const container = document.getElementById("profile-status-timeline");
+    const emptyEl = document.getElementById("timeline-empty");
+    const loadMoreBtn = document.getElementById("timeline-load-more");
+    if (!container || !emptyEl || !loadMoreBtn) return;
+    emptyEl.classList.toggle("hidden", container.children.length > 0);
+    loadMoreBtn.classList.toggle("hidden", timelineNextOffset === null);
+    loadMoreBtn.disabled = timelineLoading;
+    loadMoreBtn.textContent = timelineLoading ? "Đang tải..." : "Xem thêm";
+}
+
+function renderHistoryState() {
+    const emptyEl = document.getElementById("history-empty");
+    const listEl = document.getElementById("history-bet-list");
+    if (!emptyEl || !listEl) return;
+    emptyEl.classList.toggle("hidden", profileBets.length > 0);
+}
+
+function setComposerStatus(message, tone = "neutral") {
     const statusEl = document.getElementById("default-taunt-status");
     if (!statusEl) return;
     statusEl.textContent = message || "";
@@ -550,177 +184,516 @@ function setDefaultTauntStatus(message, tone = "neutral") {
     }
 }
 
-function updateDefaultTauntCount() {
+function updateComposerCount() {
     const input = document.getElementById("default-taunt-input");
     const count = document.getElementById("default-taunt-count");
     if (!input || !count) return;
-    const maxLength = Number(input.maxLength || 0);
-    const nearLimit = maxLength > 0 && input.value.length > Math.max(maxLength - 15, 0);
     count.textContent = String(input.value.length);
-    count.parentElement?.classList.toggle("text-rose-500", nearLimit);
-    count.parentElement?.classList.toggle("text-slate-400", !nearLimit);
 }
 
-function getProfileStatusTimeline(data) {
-    if (!Array.isArray(data?.status_timeline)) return [];
-    return data.status_timeline;
+function getSelectedMatchSummary(bet) {
+    return `${bet.home_team} ${Number(bet.home_score ?? 0)} - ${Number(bet.away_score ?? 0)} ${bet.away_team}`;
 }
 
-function formatProfileStatusTime(value) {
-    if (!value) return "Khong ro thoi gian";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "Khong ro thoi gian";
-    return date.toLocaleString("vi-VN", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-    });
+function syncSelectedMatchContext() {
+    const contextEl = document.getElementById("selected-match-context");
+    const summaryEl = document.getElementById("selected-match-summary");
+    if (!contextEl || !summaryEl) return;
+    if (!selectedReactionBet) {
+        contextEl.classList.add("hidden");
+        summaryEl.textContent = "";
+        return;
+    }
+    contextEl.classList.remove("hidden");
+    summaryEl.textContent = getSelectedMatchSummary(selectedReactionBet);
 }
 
-function renderProfileStatusTimeline(data) {
-    const section = document.getElementById("profile-status-section");
-    const meta = document.getElementById("profile-status-meta");
-    const empty = document.getElementById("profile-status-empty");
-    const timelineEl = document.getElementById("profile-status-timeline");
-    if (!section || !meta || !empty || !timelineEl) return;
+function openHistorySheet() {
+    const sheet = document.getElementById("history-sheet");
+    if (!sheet) return;
+    sheet.classList.add("show");
+    sheet.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+}
 
-    const timeline = getProfileStatusTimeline(data);
-    const hasStatus = timeline.length > 0;
-    const editable = data?.can_edit !== false;
-    const fallbackName = data?.email ? data.email.split("@")[0] : (data?.initials || "User");
-    const shortName = data?.display_name || fallbackName;
+function closeHistorySheet() {
+    const sheet = document.getElementById("history-sheet");
+    if (!sheet) return;
+    sheet.classList.remove("show");
+    sheet.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+}
 
-    section.classList.toggle("hidden", !editable && !hasStatus);
-    empty.classList.toggle("hidden", hasStatus);
-    meta.textContent = hasStatus
-        ? `${timeline.length} trạng thái.`
-        : (editable
-            ? "Đăng trạng thái đầu tiên để bắt đầu nhật ký tu hành của bạn."
-            : "Người dùng này chưa có trạng thái (chắc không biết viết)");
+function historyBadgeHtml(bet) {
+    const isFinished = String(bet.match_status || "").toLowerCase() === "finished";
+    const isWin = isFinished && Number(bet.points_earned || 0) > 0;
+    if (!isFinished || !bet.result_published) {
+        return `<span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">Chờ kết quả</span>`;
+    }
+    if (bet.points_earned === null) {
+        return `<span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Hoàn điểm</span>`;
+    }
+    if (isWin) {
+        return `<span class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">✅ Thắng</span>`;
+    }
+    return `<span class="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">❌ Thua</span>`;
+}
 
-    if (!hasStatus) {
-        timelineEl.innerHTML = "";
+function renderHistoryList() {
+    const listEl = document.getElementById("history-bet-list");
+    const errorEl = document.getElementById("history-sheet-error");
+    if (!listEl || !errorEl) return;
+    errorEl.classList.add("hidden");
+    if (!profileBets.length) {
+        listEl.innerHTML = "";
+        renderHistoryState();
         return;
     }
 
-    timelineEl.innerHTML = timeline.map((item, index) => `
-        <article class="relative pl-6">
-            <span class="absolute left-0 top-2.5 h-2.5 w-2.5 rounded-full bg-sky-500 ring-4 ring-sky-100"></span>
-            ${index < timeline.length - 1 ? '<span class="absolute left-[4px] top-5 bottom-[-16px] w-px bg-slate-200"></span>' : ""}
-            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div class="flex items-center justify-between gap-3">
-                    <div class="text-sm font-semibold text-slate-900">${escapeHtml(shortName)}</div>
-                    <div class="text-[11px] text-slate-400">${escapeHtml(formatProfileStatusTime(item.created_at))}</div>
-                </div>
-                <p class="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">${escapeHtml(item.content || "")}</p>
-            </div>
-        </article>
-    `).join("");
+    listEl.innerHTML = profileBets.map(bet => {
+        const homeIcon = safeImageSrc(bet.home_icon)
+            ? `<img src="${safeImageSrc(bet.home_icon)}" alt="" class="h-5 w-5 rounded-full border border-slate-200 object-cover">`
+            : "";
+        const awayIcon = safeImageSrc(bet.away_icon)
+            ? `<img src="${safeImageSrc(bet.away_icon)}" alt="" class="h-5 w-5 rounded-full border border-slate-200 object-cover">`
+            : "";
+        const canShare = Boolean(profileData?.can_edit) && Boolean(bet.can_share_reaction);
+        return `
+            <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <button type="button" data-open-match="${bet.match_id}" class="w-full text-left">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0 flex-1">
+                            <div class="flex min-w-0 items-center gap-2">
+                                ${homeIcon}
+                                <div class="truncate text-sm font-semibold text-slate-900">${escapeHtml(bet.home_team)}</div>
+                                <div class="text-xs font-black text-slate-400">${escapeHtml(bet.result_published ? `${Number(bet.home_score ?? 0)} - ${Number(bet.away_score ?? 0)}` : "vs")}</div>
+                                <div class="truncate text-sm font-semibold text-slate-900">${escapeHtml(bet.away_team)}</div>
+                                ${awayIcon}
+                            </div>
+                            <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                                ${historyBadgeHtml(bet)}
+                                <span>Chọn: <strong class="text-slate-700">${escapeHtml(({ HOME: "Chủ nhà", DRAW: "Hòa", AWAY: "Khách" }[bet.choice] || bet.choice))}</strong></span>
+                                <span>•</span>
+                                <span>Đặt ${formatCoins(bet.stake)}</span>
+                            </div>
+                            <div class="mt-1 text-[11px] text-slate-400">Trận ${escapeHtml(formatProfileTime(bet.start_time))} • Đặt ${escapeHtml(formatProfileTime(bet.created_at))}</div>
+                        </div>
+                        <div class="flex-shrink-0 text-right">
+                            <div class="text-sm font-black text-[#D3af37]">${bet.points_earned === null ? "—" : `${Number(bet.points_earned || 0) > 0 ? "+" : ""}${formatCoins(Math.abs(Number(bet.points_earned || 0)))}`}</div>
+                            <div class="text-[11px] text-slate-400">Chi tiết</div>
+                        </div>
+                    </div>
+                </button>
+                ${canShare ? `
+                    <div class="mt-3 border-t border-slate-100 pt-3">
+                        <button
+                            type="button"
+                            data-share-bet="${bet.bet_id}"
+                            class="w-full rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
+                        >
+                            Chia sẻ cảm nghĩ trận này
+                        </button>
+                    </div>
+                ` : ""}
+                ${!canShare && bet.has_shared_reaction ? `
+                    <div class="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
+                        Bạn đã chia sẻ cảm nghĩ cho trận này rồi.
+                    </div>
+                ` : ""}
+            </article>
+        `;
+    }).join("");
+    renderHistoryState();
 }
 
-function syncDefaultTauntEditor(data) {
-    const section = document.getElementById("default-taunt-section");
-    const input = document.getElementById("default-taunt-input");
-    const saveBtn = document.getElementById("save-default-taunt");
-    if (!section || !input || !saveBtn) return;
-
-    const editable = data?.can_edit !== false;
-    section.classList.toggle("hidden", !editable);
-    input.disabled = !editable;
-    saveBtn.disabled = !editable;
-
-    if (!editable) return;
-
-    updateDefaultTauntCount();
-    setDefaultTauntStatus("");
+async function fetchViewerProfile() {
+    const host = document.getElementById("user-info");
+    try {
+        const res = await fetch("/api/v1/me", PROFILE_NO_CACHE_FETCH_OPTIONS);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        viewerData = await res.json();
+        renderHeaderUserInfo();
+    } catch (error) {
+        console.error("fetchViewerProfile error:", error);
+        if (host) {
+            host.textContent = "Lỗi tải dữ liệu";
+        }
+    }
 }
 
-function initDefaultTauntEditor() {
-    const section = document.getElementById("default-taunt-section");
-    const input = document.getElementById("default-taunt-input");
-    const saveBtn = document.getElementById("save-default-taunt");
-    if (!section || !input || !saveBtn || saveBtn.dataset.bound === "1") return;
+async function fetchProfile() {
+    try {
+        const url = PROFILE_USER_ID
+            ? `/api/v1/users/${encodeURIComponent(PROFILE_USER_ID)}`
+            : "/api/v1/me";
+        const res = await fetch(url, PROFILE_NO_CACHE_FETCH_OPTIONS);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        profileData = await res.json();
+        applyProfileUI();
+    } catch (error) {
+        console.error("fetchProfile error:", error);
+    }
+}
 
-    saveBtn.dataset.bound = "1";
+async function fetchBetHistory() {
+    const errorEl = document.getElementById("history-sheet-error");
+    try {
+        const url = PROFILE_USER_ID
+            ? `/api/v1/users/${encodeURIComponent(PROFILE_USER_ID)}/bets`
+            : "/api/v1/me/bets";
+        const res = await fetch(url, PROFILE_NO_CACHE_FETCH_OPTIONS);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        profileBets = await res.json();
+        renderStats();
+        renderHistoryList();
+    } catch (error) {
+        console.error("fetchBetHistory error:", error);
+        profileBets = [];
+        renderStats();
+        renderHistoryList();
+        if (errorEl) {
+            errorEl.textContent = "Không thể tải lịch sử cược lúc này.";
+            errorEl.classList.remove("hidden");
+        }
+    }
+}
+
+async function fetchTimeline(reset = false) {
+    const container = document.getElementById("profile-status-timeline");
+    const errorEl = document.getElementById("timeline-error");
+    if (!container || timelineLoading) return;
+    if (reset) {
+        timelineNextOffset = 0;
+        container.innerHTML = "";
+    }
+
+    timelineLoading = true;
+    renderTimelineState();
+    if (errorEl) {
+        errorEl.textContent = "";
+        errorEl.classList.add("hidden");
+    }
+
+    try {
+        const offset = timelineNextOffset ?? 0;
+        const url = PROFILE_USER_ID
+            ? `/api/v1/users/${encodeURIComponent(PROFILE_USER_ID)}/timeline?offset=${offset}&limit=10`
+            : `/api/v1/me/timeline?offset=${offset}&limit=10`;
+        const res = await fetch(url, PROFILE_NO_CACHE_FETCH_OPTIONS);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const items = Array.isArray(data.items) ? data.items : [];
+
+        if (reset) {
+            window.TimelineFeed?.render(container, items, {});
+        } else {
+            window.TimelineFeed?.append(container, items, {});
+        }
+        timelineNextOffset = data.next_offset ?? null;
+    } catch (error) {
+        console.error("fetchTimeline error:", error);
+        if (errorEl) {
+            errorEl.textContent = "Không thể tải dòng thời gian lúc này.";
+            errorEl.classList.remove("hidden");
+        }
+    } finally {
+        timelineLoading = false;
+        renderTimelineState();
+    }
+}
+
+function initHistorySheet() {
+    document.getElementById("open-history-sheet")?.addEventListener("click", openHistorySheet);
+    document.getElementById("close-history-sheet")?.addEventListener("click", closeHistorySheet);
+    document.getElementById("history-sheet")?.addEventListener("click", event => {
+        if (event.target?.id === "history-sheet") {
+            closeHistorySheet();
+        }
+    });
+    document.getElementById("history-bet-list")?.addEventListener("click", event => {
+        const matchButton = event.target.closest("[data-open-match]");
+        if (matchButton) {
+            openMatchDetail(Number(matchButton.dataset.openMatch), true);
+            return;
+        }
+        const shareButton = event.target.closest("[data-share-bet]");
+        if (shareButton) {
+            const betId = Number(shareButton.dataset.shareBet);
+            selectedReactionBet = profileBets.find(bet => Number(bet.bet_id) === betId) || null;
+            syncSelectedMatchContext();
+            closeHistorySheet();
+            document.getElementById("default-taunt-input")?.focus();
+        }
+    });
+}
+
+function initComposer() {
+    const input = document.getElementById("default-taunt-input");
+    const saveBtn = document.getElementById("save-profile-status");
+    if (!input || !saveBtn) return;
+
     input.addEventListener("input", () => {
-        updateDefaultTauntCount();
-        setDefaultTauntStatus("");
+        updateComposerCount();
+        setComposerStatus("");
+    });
+
+    document.getElementById("clear-selected-match")?.addEventListener("click", () => {
+        selectedReactionBet = null;
+        syncSelectedMatchContext();
     });
 
     saveBtn.addEventListener("click", async () => {
-        if (_profileData?.can_edit === false) return;
-        if (input.value.length > input.maxLength) {
-            setDefaultTauntStatus(`Toi da ${input.maxLength} ky tu.`, "error");
+        if (!profileData || profileData.can_edit === false) return;
+        if (input.value.length > Number(input.maxLength || 160)) {
+            setComposerStatus(`Tối đa ${input.maxLength} ký tự.`, "error");
             return;
         }
 
         saveBtn.disabled = true;
         const oldText = saveBtn.textContent;
-        saveBtn.textContent = "Dang dang...";
-        setDefaultTauntStatus("");
+        saveBtn.textContent = "Đang đăng...";
+        setComposerStatus("");
 
         try {
+            const payload = { content: input.value };
+            if (selectedReactionBet?.match_id) {
+                payload.match_id = Number(selectedReactionBet.match_id);
+            }
+
             const res = await fetch("/api/v1/me/statuses", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ content: input.value }),
+                body: JSON.stringify(payload),
             });
             const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.detail || `Loi ${res.status}`);
+            if (!res.ok) throw new Error(data.detail || `Lỗi ${res.status}`);
 
-            _profileData = { ..._profileData, ...data };
             input.value = "";
-            updateDefaultTauntCount();
-            renderProfileStatusTimeline(_profileData);
-            setDefaultTauntStatus("Da dang trang thai moi.", "success");
-        } catch (err) {
-            setDefaultTauntStatus(err.message || "Khong the dang trang thai.", "error");
+            updateComposerCount();
+            setComposerStatus("Đã đăng bài mới.", "success");
+
+            if (selectedReactionBet?.match_id) {
+                profileBets = profileBets.map(bet => Number(bet.match_id) === Number(selectedReactionBet.match_id)
+                    ? { ...bet, can_share_reaction: false, has_shared_reaction: true }
+                    : bet);
+                renderHistoryList();
+            }
+
+            selectedReactionBet = null;
+            syncSelectedMatchContext();
+            await fetchTimeline(true);
+        } catch (error) {
+            setComposerStatus(error.message || "Không thể đăng bài.", "error");
         } finally {
             saveBtn.disabled = false;
             saveBtn.textContent = oldText;
         }
     });
 
-    updateDefaultTauntCount();
+    updateComposerCount();
+    syncSelectedMatchContext();
 }
 
-document.addEventListener("DOMContentLoaded", initDefaultTauntEditor);
-
-function applyProfileUI(data) {
-    const fallbackName = data.email ? data.email.split("@")[0] : (data.initials || "User");
-    const shortName = data.display_name || fallbackName;
-    const safeShortName = escapeHtml(shortName);
-    const badgeHtml = renderBadge(data.badge);
-    const emailEl = document.getElementById("profile-email");
-    const canViewEmail = Boolean(data.email) && data.can_edit !== false;
-
-    document.getElementById("profile-name").textContent = shortName;
-    document.getElementById("profile-points").textContent = data.total_points.toLocaleString();
-    if (emailEl) {
-        emailEl.textContent = canViewEmail ? data.email : "";
-        emailEl.classList.toggle("hidden", !canViewEmail);
+function initAvatarModal() {
+    const modal = document.getElementById("avatar-modal");
+    const openBtn = document.getElementById("open-avatar-modal");
+    const closeBtn = document.getElementById("close-avatar-modal");
+    const cancelBtn = document.getElementById("btn-avatar-cancel");
+    const saveBtn = document.getElementById("btn-avatar-save");
+    const dropZone = document.getElementById("avatar-drop-zone");
+    const fileInput = document.getElementById("avatar-file-input");
+    const preview = document.getElementById("avatar-preview");
+    const hint = document.getElementById("drop-hint");
+    const errorEl = document.getElementById("avatar-error");
+    const progressEl = document.getElementById("avatar-progress");
+    if (!modal || !openBtn || !closeBtn || !cancelBtn || !saveBtn || !dropZone || !fileInput || !preview || !hint || !errorEl || !progressEl) {
+        return;
     }
 
-    document.getElementById("user-info").innerHTML =
-        `${headerAvatarHtml(data)}
-         <span class="font-semibold text-slate-900">${safeShortName}</span>
-         &nbsp;|&nbsp; <span class="text-[#D3af37] font-bold">${data.total_points.toLocaleString()}</span>d`;
+    const open = () => {
+        if (profileData?.can_edit === false) return;
+        modal.classList.add("show");
+        reset();
+    };
+    const close = () => {
+        modal.classList.remove("show");
+        reset();
+    };
+    const reset = () => {
+        selectedAvatarFile = null;
+        preview.classList.remove("show");
+        preview.src = "";
+        hint.style.display = "";
+        saveBtn.disabled = true;
+        errorEl.classList.add("hidden");
+        errorEl.textContent = "";
+        progressEl.classList.remove("show");
+        fileInput.value = "";
+    };
+    const setFile = file => {
+        if (!file) return;
+        if (!file.type.startsWith("image/")) {
+            errorEl.textContent = "Chỉ chấp nhận file ảnh.";
+            errorEl.classList.remove("hidden");
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            errorEl.textContent = "Ảnh quá lớn, tối đa 5MB.";
+            errorEl.classList.remove("hidden");
+            return;
+        }
+        selectedAvatarFile = file;
+        const reader = new FileReader();
+        reader.onload = event => {
+            preview.src = event.target.result;
+            preview.classList.add("show");
+            hint.style.display = "none";
+        };
+        reader.readAsDataURL(file);
+        saveBtn.disabled = false;
+        errorEl.classList.add("hidden");
+    };
 
-    renderAvatar(data);
+    openBtn.addEventListener("click", open);
+    closeBtn.addEventListener("click", close);
+    cancelBtn.addEventListener("click", close);
+    modal.addEventListener("click", event => {
+        if (event.target === modal) close();
+    });
 
-    const badgeHost = document.getElementById("profile-badge");
-    if (badgeHost) badgeHost.innerHTML = badgeHtml;
+    dropZone.addEventListener("click", () => fileInput.click());
+    dropZone.addEventListener("dragover", event => {
+        event.preventDefault();
+        dropZone.classList.add("dragover");
+    });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+    dropZone.addEventListener("drop", event => {
+        event.preventDefault();
+        dropZone.classList.remove("dragover");
+        setFile(event.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener("change", () => setFile(fileInput.files[0]));
 
-    const editable = data.can_edit !== false;
-    const pointsEnabled = Boolean(data.features?.points_enabled);
-    document.getElementById("open-avatar-modal")?.classList.toggle("hidden", !editable);
-    document.getElementById("open-name-modal")?.classList.toggle("hidden", !editable);
-    const rechargeSection = document.getElementById("recharge-section");
-    if (rechargeSection) rechargeSection.classList.toggle("hidden", !editable || !pointsEnabled);
+    saveBtn.addEventListener("click", async () => {
+        if (!selectedAvatarFile) return;
+        saveBtn.disabled = true;
+        progressEl.classList.add("show");
+        errorEl.classList.add("hidden");
 
-    initDefaultTauntEditor();
-    syncDefaultTauntEditor(data);
-    renderProfileStatusTimeline(data);
+        try {
+            const form = new FormData();
+            form.append("file", selectedAvatarFile);
+            const res = await fetch("/api/v1/me/avatar", { method: "POST", body: form });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.detail || `Lỗi ${res.status}`);
+            }
+            const { avatar_url } = await res.json();
+            profileData = { ...profileData, avatar_url: normalizeImageSrc(avatar_url) };
+            if (viewerData) {
+                viewerData = { ...viewerData, avatar_url: normalizeImageSrc(avatar_url) };
+                renderHeaderUserInfo();
+            }
+            applyProfileUI();
+            close();
+        } catch (error) {
+            errorEl.textContent = error.message || "Lỗi không xác định.";
+            errorEl.classList.remove("hidden");
+            saveBtn.disabled = false;
+            progressEl.classList.remove("show");
+        }
+    });
 }
+
+function initNameModal() {
+    const modal = document.getElementById("name-modal");
+    const openBtn = document.getElementById("open-name-modal");
+    const closeBtn = document.getElementById("close-name-modal");
+    const cancelBtn = document.getElementById("btn-name-cancel");
+    const saveBtn = document.getElementById("btn-name-save");
+    const input = document.getElementById("name-input");
+    const counter = document.getElementById("name-char-count");
+    const errorEl = document.getElementById("name-error");
+    if (!modal || !openBtn || !closeBtn || !cancelBtn || !saveBtn || !input || !counter || !errorEl) {
+        return;
+    }
+
+    const open = () => {
+        if (profileData?.can_edit === false) return;
+        modal.classList.add("show");
+        input.value = profileData?.display_name || "";
+        counter.textContent = String(input.value.length);
+        errorEl.classList.add("hidden");
+        setTimeout(() => input.focus(), 60);
+    };
+    const close = () => modal.classList.remove("show");
+
+    openBtn.addEventListener("click", open);
+    closeBtn.addEventListener("click", close);
+    cancelBtn.addEventListener("click", close);
+    modal.addEventListener("click", event => {
+        if (event.target === modal) close();
+    });
+
+    input.addEventListener("input", () => {
+        const length = input.value.length;
+        counter.textContent = String(length);
+        counter.parentElement.classList.toggle("warn", length > 25);
+    });
+
+    saveBtn.addEventListener("click", async () => {
+        const name = input.value.trim();
+        if (!name) {
+            errorEl.textContent = "Tên không được để trống.";
+            errorEl.classList.remove("hidden");
+            return;
+        }
+        if (name.length > 30) {
+            errorEl.textContent = "Tối đa 30 ký tự.";
+            errorEl.classList.remove("hidden");
+            return;
+        }
+
+        saveBtn.disabled = true;
+        const oldText = saveBtn.textContent;
+        saveBtn.textContent = "Đang lưu...";
+        errorEl.classList.add("hidden");
+
+        try {
+            const res = await fetch("/api/v1/me/update", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ display_name: name }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.detail || `Lỗi ${res.status}`);
+
+            profileData = { ...profileData, ...data };
+            if (viewerData) {
+                viewerData = { ...viewerData, display_name: data.display_name };
+                renderHeaderUserInfo();
+            }
+            applyProfileUI();
+            close();
+        } catch (error) {
+            errorEl.textContent = error.message || "Không thể đổi tên.";
+            errorEl.classList.remove("hidden");
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = oldText;
+        }
+    });
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+    initHistorySheet();
+    initComposer();
+    initAvatarModal();
+    initNameModal();
+    document.getElementById("timeline-load-more")?.addEventListener("click", () => fetchTimeline(false));
+
+    await fetchViewerProfile();
+    await fetchProfile();
+    await fetchBetHistory();
+    await fetchTimeline(true);
+});
