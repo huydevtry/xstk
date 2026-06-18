@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func, case, desc, update
 from sqlalchemy.exc import IntegrityError
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
@@ -79,6 +79,24 @@ MAX_PROFILE_TIMELINE_PAGE_SIZE = 20
 MAX_HOMEPAGE_ANNOUNCEMENT_LENGTH = 280
 PROFILE_POST_TYPE_TEXT = "text"
 PROFILE_POST_TYPE_MATCH_REACTION = "match_reaction"
+
+
+def _utc_now_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _serialize_utc_datetime(value: Optional[datetime]) -> Optional[str]:
+    if value is None:
+        return None
+    aware = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+    return aware.astimezone(APP_TIMEZONE).isoformat()
+
+
+def _serialize_app_datetime(value: Optional[datetime]) -> Optional[str]:
+    if value is None:
+        return None
+    aware = value.replace(tzinfo=APP_TIMEZONE) if value.tzinfo is None else value.astimezone(APP_TIMEZONE)
+    return aware.astimezone(APP_TIMEZONE).isoformat()
 
 
 def _format_coins(value: int) -> str:
@@ -154,7 +172,7 @@ def _serialize_profile_status_post(
         "id": post.id,
         "post_type": (post.post_type or PROFILE_POST_TYPE_TEXT),
         "content": post.content,
-        "created_at": post.created_at.isoformat() if post.created_at else None,
+        "created_at": _serialize_utc_datetime(post.created_at),
         "author": _user_avatar_payload(author) if author is not None else None,
         "match": _serialize_profile_status_match(match),
     }
@@ -228,7 +246,7 @@ async def _create_profile_status_post(
         content=content,
         post_type=post_type,
         match_id=match.id if match is not None else None,
-        created_at=created_at or datetime.utcnow(),
+        created_at=created_at or _utc_now_naive(),
     )
     user.profile_status = content
     db.add(post)
@@ -284,7 +302,7 @@ async def _backfill_profile_status_timeline(db: AsyncSession) -> None:
             db,
             user,
             content,
-            created_at=user.created_at or datetime.utcnow(),
+            created_at=user.created_at or _utc_now_naive(),
         )
         created = True
 
@@ -1181,8 +1199,8 @@ async def get_upcoming_matches(db: AsyncSession = Depends(get_db)):
             "away_icon": r.Match.away_icon,
             "handicap": r.Match.handicap,
             "status": r.Match.status,
-            "start_time": r.Match.start_time.isoformat(),
-            "end_time": _match_effective_end_time(r.Match).isoformat(),
+            "start_time": _serialize_app_datetime(r.Match.start_time),
+            "end_time": _serialize_app_datetime(_match_effective_end_time(r.Match)),
             "result_published": bool(r.Match.resolved_at),
             "stakes_home": r.stakes_home,
             "stakes_draw": r.stakes_draw,
@@ -1350,7 +1368,7 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
     users = (await db.execute(users_q)).scalars().all()
 
     # Tính points_earned trong 24h gần nhất (trend)
-    since = datetime.utcnow() - timedelta(hours=24)
+    since = _utc_now_naive() - timedelta(hours=24)
     trend_q = (
         select(Bet.user_id, func.sum(Bet.points_earned).label("earned_24h"))
         .where(Bet.created_at >= since, Bet.points_earned > 0)
@@ -1504,7 +1522,7 @@ async def get_activity_feed(db: AsyncSession = Depends(get_db)):
         text = tpl.format(name=name, stake=_format_coins(r.Bet.stake), team=team)
         activities.append({
             "text": text,
-            "time": r.Bet.created_at.isoformat(),
+            "time": _serialize_utc_datetime(r.Bet.created_at),
         })
 
     return activities
@@ -1598,8 +1616,8 @@ async def get_admin_users(
             "email": user.email,
             "display_name": user.display_name,
             "total_points": user.total_points,
-            "created_at": user.created_at.isoformat() if user.created_at else None,
-            "last_bet_at": bets_by_user[str(user.id)][0].created_at.isoformat() if bets_by_user.get(str(user.id)) else None,
+            "created_at": _serialize_utc_datetime(user.created_at),
+            "last_bet_at": _serialize_utc_datetime(bets_by_user[str(user.id)][0].created_at) if bets_by_user.get(str(user.id)) else None,
             "bet_count": len(bets_by_user.get(str(user.id), [])),
             "win_count": sum(
                 1
@@ -1655,10 +1673,10 @@ def _match_response(match: Match):
         "away_score": match.away_score,
         "handicap": match.handicap,
         "status": match.status,
-        "start_time": match.start_time.isoformat(),
-        "end_time": _match_effective_end_time(match).isoformat() if match.start_time else None,
+        "start_time": _serialize_app_datetime(match.start_time),
+        "end_time": _serialize_app_datetime(_match_effective_end_time(match)) if match.start_time else None,
         "result_published": _match_result_published(match),
-        "resolved_at": match.resolved_at.isoformat() if getattr(match, "resolved_at", None) else None,
+        "resolved_at": _serialize_app_datetime(match.resolved_at) if getattr(match, "resolved_at", None) else None,
     }
 
 
@@ -1726,11 +1744,11 @@ def _serialize_bet_history_entry(
         "home_score": match.home_score,
         "away_score": match.away_score,
         "handicap": match.handicap,
-        "start_time": match.start_time.isoformat(),
+        "start_time": _serialize_app_datetime(match.start_time),
         "choice": bet.choice,
         "stake": bet.stake,
         "points_earned": bet.points_earned,
-        "created_at": bet.created_at.isoformat(),
+        "created_at": _serialize_utc_datetime(bet.created_at),
         "result_published": _match_result_published(match),
         "can_share_reaction": can_share_reaction,
         "has_shared_reaction": has_shared_reaction,
@@ -1769,7 +1787,7 @@ async def _build_user_badge_for_profile(user: User, db: AsyncSession) -> Optiona
     if rank is None:
         return None
 
-    since = datetime.utcnow() - timedelta(hours=24)
+    since = _utc_now_naive() - timedelta(hours=24)
     trend_q = (
         select(func.sum(Bet.points_earned))
         .where(Bet.user_id == user.id, Bet.created_at >= since, Bet.points_earned > 0)
@@ -1828,8 +1846,8 @@ def _recharge_request_response(request: PointRechargeRequest, user: Optional[Use
         "id": request.id,
         "amount": request.amount,
         "status": request.status,
-        "created_at": request.created_at.isoformat(),
-        "approved_at": request.approved_at.isoformat() if request.approved_at else None,
+        "created_at": _serialize_utc_datetime(request.created_at),
+        "approved_at": _serialize_app_datetime(request.approved_at) if request.approved_at else None,
     }
     if user:
         payload["user"] = {
@@ -2067,7 +2085,7 @@ async def _build_match_detail_payload(
         bettors[row.Bet.choice].append({
             **user_payload,
             "stake": row.Bet.stake,
-            "created_at": row.Bet.created_at.isoformat(),
+            "created_at": _serialize_utc_datetime(row.Bet.created_at),
             "is_lone_wolf": summary[row.Bet.choice]["count"] == 1 and max(
                 summary[ch]["count"] for ch in summary if ch != row.Bet.choice
             ) >= 3,
@@ -2102,7 +2120,7 @@ async def _build_match_detail_payload(
             "choice": my_row.Bet.choice,
             "stake": my_row.Bet.stake,
             "points_earned": my_row.Bet.points_earned,
-            "created_at": my_row.Bet.created_at.isoformat(),
+            "created_at": _serialize_utc_datetime(my_row.Bet.created_at),
             "outcome": my_outcome,
             "outcome_label": OUTCOME_LABELS[my_outcome],
             "quote": _build_detail_quote(
@@ -2763,7 +2781,7 @@ async def get_match_bets_v2(match_id: int, db: AsyncSession = Depends(get_db)):
                 **_user_avatar_payload(row.User),
                 "stake": row.Bet.stake,
                 "taunt_text": row.Bet.taunt_text,
-                "created_at": row.Bet.created_at.isoformat() if row.Bet.created_at else None,
+                "created_at": _serialize_utc_datetime(row.Bet.created_at),
                 "is_lone_wolf": is_lone_wolf,
             }
         )

@@ -1,6 +1,7 @@
 (function () {
     if (typeof window === "undefined") return;
 
+    const APP_TIME_ZONE = "Asia/Ho_Chi_Minh";
     const tauntRotators = new Map();
     const baseFetchUpcomingMatches = fetchUpcomingMatches;
 
@@ -37,6 +38,17 @@
     window.choiceLabel = function choiceLabelClean(choice) {
         return { HOME: "Chủ nhà", DRAW: "Hòa", AWAY: "Khách" }[choice] || choice;
     };
+
+    function formatVNTime(value) {
+        if (!value) return "-";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "-";
+        return date.toLocaleTimeString("vi-VN", {
+            timeZone: APP_TIME_ZONE,
+            hour: "2-digit",
+            minute: "2-digit",
+        });
+    }
 
     function tauntRotatorKey(matchId, choice) {
         return `${matchId}:${choice}`;
@@ -244,13 +256,13 @@
     };
 
     window.renderMatchCard = function renderMatchCardWithTaunt(match) {
-        const timeStr = new Date(match.start_time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+        const timeStr = formatVNTime(match.start_time);
         const { id, home_team, home_icon, away_team, away_icon, handicap, stakes_home, stakes_draw, stakes_away, total_pool } = match;
         const status = String(match.status || "upcoming");
         const isLive = isLiveMatch(match);
         const hasPlaced = placedBets.has(id);
         const canBet = status === "upcoming" && !hasPlaced;
-        const endTimeStr = match.end_time ? new Date(match.end_time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "-";
+        const endTimeStr = match.end_time ? formatVNTime(match.end_time) : "-";
         const homeTeam = escapeHtml(home_team);
         const awayTeam = escapeHtml(away_team);
         const homeIconSrc = safeImageSrc(home_icon);

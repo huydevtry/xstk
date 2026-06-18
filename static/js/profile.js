@@ -10,6 +10,7 @@ let timelineLoading = false;
 
 const PROFILE_USER_ID = new URLSearchParams(window.location.search).get("user_id") || "";
 const IS_OWN_PROFILE = !PROFILE_USER_ID;
+const APP_TIME_ZONE = "Asia/Ho_Chi_Minh";
 
 function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>\"']/g, ch => ({
@@ -46,6 +47,7 @@ function formatProfileTime(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "Không rõ thời gian";
     return date.toLocaleString("vi-VN", {
+        timeZone: APP_TIME_ZONE,
         day: "2-digit",
         month: "2-digit",
         year: "numeric",

@@ -84,6 +84,7 @@ const DETAIL_QUOTES = [
     "Hôm nay không cần hô to, chỉ cần vào đúng cửa rồi ngồi nhìn tỉ số.",
     "Chọn khôn một nhịp, khịa nhẹ cả phòng.",
 ];
+const APP_TIME_ZONE = "Asia/Ho_Chi_Minh";
 
 function choiceLabel(choice) {
     return { HOME: "Chủ nhà", DRAW: "Hòa", AWAY: "Khách" }[choice] || choice;
@@ -93,11 +94,36 @@ function isLiveMatch(match) {
     return String(match?.status || "").toLowerCase() === "live";
 }
 
+function getVNDateParts(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return Object.fromEntries(
+        new Intl.DateTimeFormat("en-CA", {
+            timeZone: APP_TIME_ZONE,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hourCycle: "h23",
+        }).formatToParts(date)
+            .filter(part => part.type !== "literal")
+            .map(part => [part.type, part.value])
+    );
+}
+
+function formatVNTime(value) {
+    const parts = getVNDateParts(value);
+    return parts ? `${parts.hour}:${parts.minute}` : "-";
+}
+
 function formatVNDateTime(value) {
     if (!value) return "—";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "—";
     return date.toLocaleString("vi-VN", {
+        timeZone: APP_TIME_ZONE,
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
@@ -232,8 +258,8 @@ async function fetchUpcomingMatches() {
         // Group theo ngày
         const grouped = {};
         matches.forEach(m => {
-            const d = new Date(m.start_time);
-            const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+            const parts = getVNDateParts(m.start_time);
+            const key = parts ? `${parts.year}-${parts.month}-${parts.day}` : "unknown";
             (grouped[key] = grouped[key] || []).push(m);
         });
 
@@ -659,12 +685,12 @@ function normalizeStakeValue(rawVal, minStake, maxStake) {
 }
 
 function renderMatchCard(match) {
-    const timeStr = new Date(match.start_time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+    const timeStr = formatVNTime(match.start_time);
     const { id, home_team, home_icon, away_team, away_icon, handicap, stakes_home, stakes_draw, stakes_away, total_pool } = match;
     const status = String(match.status || "upcoming");
     const isLive = isLiveMatch(match);
     const canBet = status === "upcoming";
-    const endTimeStr = match.end_time ? new Date(match.end_time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "-";
+    const endTimeStr = match.end_time ? formatVNTime(match.end_time) : "-";
     const homeTeam = escapeHtml(home_team);
     const awayTeam = escapeHtml(away_team);
     const homeIconSrc = safeImageSrc(home_icon);

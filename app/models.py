@@ -1,6 +1,6 @@
 import enum
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint, Uuid
 
@@ -41,6 +41,10 @@ def _random_avatar_color():
     return _random.choice(AVATAR_COLORS)
 
 
+def _utc_now_naive():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -52,7 +56,7 @@ class User(Base):
     total_points = Column(Integer, default=1000)
     avatar_url = Column(String, nullable=True)
     avatar_color = Column(String, nullable=True, default=_random_avatar_color)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now_naive)
 
 
 class ProfileStatusPost(Base):
@@ -63,7 +67,7 @@ class ProfileStatusPost(Base):
     content = Column(String, nullable=False)
     post_type = Column(String, nullable=False, default="text")
     match_id = Column(Integer, ForeignKey("matches.id", ondelete="SET NULL"), nullable=True, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = Column(DateTime, default=_utc_now_naive, nullable=False, index=True)
 
 
 class Match(Base):
@@ -96,7 +100,7 @@ class Bet(Base):
     stake = Column(Integer, nullable=False)
     taunt_text = Column(String, nullable=True)
     points_earned = Column(Integer, nullable=True, default=None)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now_naive)
 
 
 class PointRechargeRequest(Base):
@@ -106,7 +110,7 @@ class PointRechargeRequest(Base):
     user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     amount = Column(Integer, nullable=False)
     status = Column(Enum(PointRechargeStatus), default=PointRechargeStatus.pending, nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=_utc_now_naive, nullable=False)
     approved_at = Column(DateTime, nullable=True)
     approved_by_user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
@@ -116,4 +120,4 @@ class AppSetting(Base):
 
     key = Column(String, primary_key=True)
     value = Column(String, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=_utc_now_naive, onupdate=_utc_now_naive)

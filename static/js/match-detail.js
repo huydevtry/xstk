@@ -1,4 +1,5 @@
 (() => {
+    const APP_TIME_ZONE = "Asia/Ho_Chi_Minh";
     const NO_CACHE_FETCH_OPTIONS = { cache: "no-store" };
     const cache = new Map();
 
@@ -33,6 +34,7 @@
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return "—";
         return date.toLocaleString("vi-VN", {
+            timeZone: APP_TIME_ZONE,
             day: "2-digit",
             month: "2-digit",
             year: "numeric",

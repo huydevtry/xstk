@@ -1,4 +1,6 @@
 (() => {
+    const APP_TIME_ZONE = "Asia/Ho_Chi_Minh";
+
     function escapeHtml(value) {
         return String(value ?? "").replace(/[&<>\"']/g, ch => ({
             "&": "&amp;",
@@ -26,6 +28,7 @@
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return "Không rõ thời gian";
         return date.toLocaleString("vi-VN", {
+            timeZone: APP_TIME_ZONE,
             day: "2-digit",
             month: "2-digit",
             year: "numeric",

@@ -14,13 +14,13 @@ const state = {
 
 const MATCH_DEFAULT_DURATION_MINUTES = 120;
 const FLAG_CDN_PREFIX = "https://flagcdn.com/128x96/";
+const APP_TIME_ZONE = "Asia/Ho_Chi_Minh";
 
 document.addEventListener("DOMContentLoaded", () => {
     bindTabs();
     bindActions();
     bindMatchFormControls();
     document.getElementById("match-form")?.addEventListener("submit", saveMatch);
-    document.getElementById("csv-import-form")?.addEventListener("submit", importMatchesCsv);
     fetchInitialData();
 });
 
@@ -78,11 +78,31 @@ function formatCoins(value) {
     return `${formatNumber(value)}đ`;
 }
 
+function getVNDateParts(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return Object.fromEntries(
+        new Intl.DateTimeFormat("en-CA", {
+            timeZone: APP_TIME_ZONE,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hourCycle: "h23",
+        }).formatToParts(date)
+            .filter(part => part.type !== "literal")
+            .map(part => [part.type, part.value])
+    );
+}
+
 function formatDateTime(value) {
     if (!value) return "Chưa có dữ liệu";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "Không hợp lệ";
     return new Intl.DateTimeFormat("vi-VN", {
+        timeZone: APP_TIME_ZONE,
         hour: "2-digit",
         minute: "2-digit",
         day: "2-digit",
@@ -92,19 +112,13 @@ function formatDateTime(value) {
 }
 
 function localDateValue(value) {
-    if (!value) return "";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "";
-    const pad = number => String(number).padStart(2, "0");
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    const parts = getVNDateParts(value);
+    return parts ? `${parts.year}-${parts.month}-${parts.day}` : "";
 }
 
 function localTimeValue(value) {
-    if (!value) return "";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "";
-    const pad = number => String(number).padStart(2, "0");
-    return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    const parts = getVNDateParts(value);
+    return parts ? `${parts.hour}:${parts.minute}` : "";
 }
 
 function localDateTimeValueFromParts(dateValue, timeValue, addMinutes = 0) {
@@ -309,20 +323,8 @@ function renderOverviewUsers() {
 
 function renderOverviewFeatures() {
     const container = document.getElementById("overview-features");
-    const enabled = Boolean(state.settings.points_enabled);
     const announcement = String(state.settings.homepage_announcement || "").trim();
     container.innerHTML = `
-        <div class="rounded-2xl border ${enabled ? "border-emerald-500/30 bg-emerald-500/8" : "border-rose-500/25 bg-rose-500/8"} px-4 py-4">
-            <div class="flex items-center justify-between gap-3">
-                <div>
-                    <div class="font-semibold text-white">Nap / doi diem</div>
-                    <div class="mt-1 text-sm text-slate-400">${enabled ? "Dang hien dong thoi block nap diem va doi diem tren profile." : "Dang an dong thoi block nap diem va doi diem tren profile."}</div>
-                </div>
-                <span class="rounded-full px-3 py-1 text-xs font-semibold ${enabled ? "bg-emerald-500/15 text-emerald-200" : "bg-rose-500/15 text-rose-200"}">
-                    ${enabled ? "Dang bat" : "Dang tat"}
-                </span>
-            </div>
-        </div>
         <div class="rounded-2xl border ${announcement ? "border-sky-500/30 bg-sky-500/8" : "border-slate-800 bg-slate-950/50"} px-4 py-4">
             <div class="flex items-center justify-between gap-3">
                 <div class="min-w-0">
@@ -338,12 +340,8 @@ function renderOverviewFeatures() {
 }
 function renderFeaturePills() {
     const container = document.getElementById("feature-status");
-    const enabled = Boolean(state.settings.points_enabled);
     const announcement = String(state.settings.homepage_announcement || "").trim();
     container.innerHTML = `
-        <span class="rounded-full border px-3 py-1 ${enabled ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-rose-500/30 bg-rose-500/10 text-rose-200"}">
-            Nap / doi diem: ${enabled ? "Bat" : "Tat"}
-        </span>
         <span class="rounded-full border px-3 py-1 ${announcement ? "border-sky-500/30 bg-sky-500/10 text-sky-200" : "border-slate-700 bg-slate-900 text-slate-300"}">
             Thong bao trang chu: ${announcement ? "Dang hien" : "Dang an"}
         </span>
@@ -351,22 +349,8 @@ function renderFeaturePills() {
 }
 function renderSettings() {
     const list = document.getElementById("settings-list");
-    const enabled = Boolean(state.settings.points_enabled);
     const announcement = String(state.settings.homepage_announcement || "");
     list.innerHTML = `
-        <div class="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4">
-            <div class="flex items-center justify-between gap-4">
-                <div>
-                    <div class="font-semibold text-white">Bat block nap / doi diem</div>
-                    <div class="mt-1 text-sm text-slate-400">Bat/tat dong thoi phan nap diem va doi diem tren trang profile.</div>
-                </div>
-                <button type="button" class="switch shrink-0" data-setting-key="points_enabled" data-enabled="${enabled}">
-                    <span class="switch-track block h-7 w-12 rounded-full bg-slate-700 p-1 transition">
-                        <span class="switch-thumb block h-5 w-5 rounded-full bg-white transition"></span>
-                    </span>
-                </button>
-            </div>
-        </div>
         <div class="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4">
             <label for="homepage-announcement-input" class="block">
                 <div class="font-semibold text-white">Thong bao hien thi o trang chu</div>
@@ -384,14 +368,6 @@ function renderSettings() {
             </div>
         </div>
     `;
-    list.querySelectorAll("[data-setting-key]").forEach(btn => {
-        btn.addEventListener("click", () => {
-            state.settings.points_enabled = !state.settings.points_enabled;
-            renderSettings();
-            renderFeaturePills();
-            renderOverviewFeatures();
-        });
-    });
     const announcementInput = document.getElementById("homepage-announcement-input");
     announcementInput?.addEventListener("input", event => {
         state.settings.homepage_announcement = event.target.value;
@@ -678,11 +654,8 @@ function teamLabel(name, icon) {
 }
 
 function localDateTimeValue(value) {
-    if (!value) return "";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "";
-    const pad = number => String(number).padStart(2, "0");
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    const parts = getVNDateParts(value);
+    return parts ? `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}` : "";
 }
 
 function apiDateTimeValue(value) {
@@ -812,61 +785,6 @@ async function resolveMatch(event, matchId) {
         showToast(err.message || "Không thể giải trận.", "error");
     }
     return false;
-}
-
-async function importMatchesCsv(event) {
-    event.preventDefault();
-    const input = document.getElementById("csv-file");
-    const result = document.getElementById("csv-import-result");
-    const btn = document.getElementById("csv-import-btn");
-    const file = input?.files?.[0];
-
-    if (!file) {
-        showToast("Vui lòng chọn file CSV.", "error");
-        return;
-    }
-
-    const oldText = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = "Đang import...";
-    result.classList.add("hidden");
-
-    try {
-        const form = new FormData();
-        form.append("file", file);
-        const data = await fetchJson("/api/v1/admin/matches/import-csv", {
-            method: "POST",
-            body: form,
-        });
-        renderCsvImportResult(data);
-        if (!data.errors?.length) {
-            input.value = "";
-            await Promise.all([fetchMatches(), fetchOverview()]);
-            showToast(data.message || "Import CSV thành công.", "success");
-        }
-    } catch (err) {
-        renderCsvImportResult({ message: err.message || "Import CSV thất bại.", errors: [] }, true);
-    } finally {
-        btn.disabled = false;
-        btn.textContent = oldText;
-    }
-}
-
-function renderCsvImportResult(data, forceError = false) {
-    const result = document.getElementById("csv-import-result");
-    if (!result) return;
-    const hasErrors = forceError || Boolean(data.errors?.length);
-    result.className = `mt-3 rounded-2xl border px-4 py-3 text-sm ${hasErrors ? "border-rose-500/30 bg-rose-500/10 text-rose-100" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"}`;
-    result.innerHTML = `
-        <div class="font-semibold">${escapeHtml(data.message || "")}</div>
-        ${data.imported !== undefined ? `<div class="mt-1 text-xs opacity-80">Imported: ${formatNumber(data.imported)} · Created: ${formatNumber(data.created)} · Updated: ${formatNumber(data.updated)}</div>` : ""}
-        ${data.errors?.length ? `
-            <div class="mt-3 space-y-1">
-                ${data.errors.map(error => `<div>Dòng ${escapeHtml(error.line)}: ${escapeHtml(error.error)}</div>`).join("")}
-            </div>
-        ` : ""}
-    `;
-    result.classList.remove("hidden");
 }
 
 function emptyPanel(message) {
