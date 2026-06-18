@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func, case, desc, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import aliased
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pydantic import BaseModel, Field
@@ -28,7 +29,18 @@ import html
 import re
 
 from app.database import engine, Base, get_db
-from app.models import Match, MatchStatus, Bet, User, ProfileStatusPost, PointRechargeRequest, PointRechargeStatus, AppSetting
+from app.models import (
+    Match,
+    MatchStatus,
+    Bet,
+    User,
+    ProfileStatusPost,
+    PointRechargeRequest,
+    PointRechargeStatus,
+    PointTransaction,
+    PointTransactionType,
+    AppSetting,
+)
 from app.dependencies import get_current_user, get_admin_user, ADMIN_EMAILS
 
 logger = logging.getLogger(__name__)
@@ -79,6 +91,10 @@ MAX_PROFILE_TIMELINE_PAGE_SIZE = 20
 MAX_HOMEPAGE_ANNOUNCEMENT_LENGTH = 280
 PROFILE_POST_TYPE_TEXT = "text"
 PROFILE_POST_TYPE_MATCH_REACTION = "match_reaction"
+DEFAULT_STARTING_POINTS = 1000
+DEFAULT_POINT_TRANSACTION_PAGE_SIZE = 20
+MAX_POINT_TRANSACTION_PAGE_SIZE = 50
+POINT_TRANSACTIONS_BACKFILLED_KEY = "point_transactions_backfilled"
 
 
 def _utc_now_naive() -> datetime:
@@ -144,6 +160,10 @@ def _normalize_optional_profile_status(value: Optional[str]) -> Optional[str]:
 
 def _normalize_timeline_limit(limit: int) -> int:
     return max(1, min(limit, MAX_PROFILE_TIMELINE_PAGE_SIZE))
+
+
+def _normalize_point_transaction_limit(limit: int) -> int:
+    return max(1, min(limit, MAX_POINT_TRANSACTION_PAGE_SIZE))
 
 
 def _serialize_profile_status_match(match: Optional[Match]) -> Optional[dict]:
@@ -471,6 +491,167 @@ async def _ensure_default_settings(db: AsyncSession) -> None:
         await db.commit()
 
 
+async def _is_point_transaction_backfilled(db: AsyncSession) -> bool:
+    setting = (
+        await db.execute(
+            select(AppSetting).where(AppSetting.key == POINT_TRANSACTIONS_BACKFILLED_KEY)
+        )
+    ).scalars().first()
+    if setting and str(setting.value).strip() == "1":
+        return True
+    existing_tx = (
+        await db.execute(select(func.count()).select_from(PointTransaction))
+    ).scalar_one()
+    return existing_tx > 0
+
+
+async def _mark_point_transaction_backfilled(db: AsyncSession) -> None:
+    setting = (
+        await db.execute(
+            select(AppSetting).where(AppSetting.key == POINT_TRANSACTIONS_BACKFILLED_KEY)
+        )
+    ).scalars().first()
+    if not setting:
+        setting = AppSetting(key=POINT_TRANSACTIONS_BACKFILLED_KEY, value="1")
+    else:
+        setting.value = "1"
+    db.add(setting)
+
+
+def _backfill_match_description(prefix: str, match: Optional[Match]) -> str:
+    if match is None:
+        return prefix
+    return f"{prefix}: {match.home_team} vs {match.away_team}"
+
+
+async def _backfill_point_transactions(db: AsyncSession) -> None:
+    if await _is_point_transaction_backfilled(db):
+        return
+
+    users = (await db.execute(select(User).order_by(User.created_at.asc(), User.id.asc()))).scalars().all()
+    users_by_id = {user.id: user for user in users}
+    matches = {
+        match.id: match
+        for match in (await db.execute(select(Match))).scalars().all()
+    }
+    approved_recharges = (
+        await db.execute(
+            select(PointRechargeRequest)
+            .where(PointRechargeRequest.status == PointRechargeStatus.approved)
+            .order_by(PointRechargeRequest.approved_at.asc(), PointRechargeRequest.created_at.asc(), PointRechargeRequest.id.asc())
+        )
+    ).scalars().all()
+    recharges_by_user: dict[UUID, list[PointRechargeRequest]] = {}
+    for request in approved_recharges:
+        recharges_by_user.setdefault(request.user_id, []).append(request)
+
+    bets = (
+        await db.execute(
+            select(Bet).order_by(Bet.created_at.asc(), Bet.id.asc())
+        )
+    ).scalars().all()
+    bets_by_user: dict[UUID, list[Bet]] = {}
+    for bet in bets:
+        bets_by_user.setdefault(bet.user_id, []).append(bet)
+
+    for user in users:
+        events: list[dict] = []
+        for bet in bets_by_user.get(user.id, []):
+            match = matches.get(bet.match_id)
+            events.append(
+                {
+                    "created_at": bet.created_at or user.created_at or _utc_now_naive(),
+                    "type": PointTransactionType.bet_stake,
+                    "delta": -int(bet.stake),
+                    "description": _backfill_match_description("Backfill: đặt cược", match),
+                    "bet": bet,
+                    "match": match,
+                    "recharge_request": None,
+                }
+            )
+            if match is None or not _match_result_published(match):
+                continue
+            if bet.points_earned and bet.points_earned > 0:
+                events.append(
+                    {
+                        "created_at": match.resolved_at or bet.created_at or _utc_now_naive(),
+                        "type": PointTransactionType.bet_reward,
+                        "delta": int(bet.points_earned),
+                        "description": _backfill_match_description("Backfill: thưởng cược", match),
+                        "bet": bet,
+                        "match": match,
+                        "recharge_request": None,
+                    }
+                )
+            elif bet.points_earned is None:
+                events.append(
+                    {
+                        "created_at": match.resolved_at or bet.created_at or _utc_now_naive(),
+                        "type": PointTransactionType.bet_refund,
+                        "delta": int(bet.stake),
+                        "description": _backfill_match_description("Backfill: hoàn điểm", match),
+                        "bet": bet,
+                        "match": match,
+                        "recharge_request": None,
+                    }
+                )
+
+        for request in recharges_by_user.get(user.id, []):
+            events.append(
+                {
+                    "created_at": request.approved_at or request.created_at or user.created_at or _utc_now_naive(),
+                    "type": PointTransactionType.recharge_approved,
+                    "delta": int(request.amount),
+                    "description": f"Backfill: duyệt nạp điểm cũ #{request.id}",
+                    "bet": None,
+                    "match": None,
+                    "recharge_request": request,
+                    "actor": users_by_id.get(request.approved_by_user_id) if request.approved_by_user_id else None,
+                }
+            )
+
+        events.sort(key=lambda item: (item["created_at"], 0 if item["delta"] <= 0 else 1, int(getattr(item.get("bet"), "id", 0) or getattr(item.get("recharge_request"), "id", 0) or 0)))
+
+        balance = DEFAULT_STARTING_POINTS
+        last_event_time = user.created_at or _utc_now_naive()
+        for event in events:
+            balance += event["delta"]
+            last_event_time = event["created_at"]
+            await _record_point_transaction(
+                db,
+                user=user,
+                delta_points=event["delta"],
+                balance_after=balance,
+                transaction_type=event["type"],
+                description=event["description"],
+                actor=event.get("actor"),
+                bet=event["bet"],
+                match=event["match"],
+                recharge_request=event["recharge_request"],
+                is_backfilled=True,
+                created_at=event["created_at"],
+            )
+
+        if not events and int(user.total_points or 0) == DEFAULT_STARTING_POINTS:
+            continue
+
+        if balance != int(user.total_points or 0):
+            adjustment_time = last_event_time + timedelta(seconds=1) if events else (user.created_at or _utc_now_naive())
+            await _record_point_transaction(
+                db,
+                user=user,
+                delta_points=int(user.total_points or 0) - balance,
+                balance_after=int(user.total_points or 0),
+                transaction_type=PointTransactionType.legacy_balance_adjustment,
+                description="Backfill: điều chỉnh số dư lịch sử",
+                is_backfilled=True,
+                created_at=adjustment_time,
+            )
+
+    await _mark_point_transaction_backfilled(db)
+    await db.commit()
+
+
 async def _get_feature_settings(db: AsyncSession) -> dict[str, object]:
     await _ensure_default_settings(db)
     settings = (await db.execute(select(AppSetting))).scalars().all()
@@ -595,6 +776,22 @@ async def startup_event():
         if "taunt_text" not in bet_column_names:
             await conn.exec_driver_sql("ALTER TABLE bets ADD COLUMN taunt_text VARCHAR")
 
+        point_transaction_columns = (
+            await conn.exec_driver_sql("PRAGMA table_info(point_transactions)")
+        ).fetchall()
+        point_transaction_column_names = {row[1] for row in point_transaction_columns}
+        if point_transaction_columns and "is_backfilled" not in point_transaction_column_names:
+            await conn.exec_driver_sql(
+                "ALTER TABLE point_transactions ADD COLUMN is_backfilled BOOLEAN DEFAULT 0"
+            )
+
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_point_transactions_user_created_at ON point_transactions (user_id, created_at DESC, id DESC)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_point_transactions_type ON point_transactions (transaction_type)"
+        )
+
         await conn.exec_driver_sql(
             """
             UPDATE matches
@@ -652,6 +849,7 @@ async def startup_event():
     async with AsyncSession(engine) as session:
         await _ensure_default_settings(session)
         await _backfill_profile_status_timeline(session)
+        await _backfill_point_transactions(session)
         result = await session.execute(select(Match))
         if not result.scalars().first():
             mock_matches = [
@@ -724,6 +922,7 @@ class AdminSettingsPayload(BaseModel):
 
 class AdminUserPointsPayload(BaseModel):
     total_points: int = Field(..., ge=0, le=1_000_000_000)
+    reason: str = Field(..., min_length=1, max_length=280)
 
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
@@ -840,6 +1039,30 @@ async def get_community_timeline(
     limit: int = Query(DEFAULT_PROFILE_TIMELINE_PAGE_SIZE, ge=1, le=MAX_PROFILE_TIMELINE_PAGE_SIZE),
 ):
     return await _list_profile_status_posts(db, offset=offset, limit=limit)
+
+
+@app.get("/api/v1/me/point-transactions")
+async def get_my_point_transactions(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(DEFAULT_POINT_TRANSACTION_PAGE_SIZE, ge=1, le=MAX_POINT_TRANSACTION_PAGE_SIZE),
+):
+    return await _list_point_transactions(db, user_id=user.id, offset=offset, limit=limit)
+
+
+@app.get("/api/v1/admin/users/{user_id}/point-transactions")
+async def get_admin_user_point_transactions(
+    user_id: UUID,
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(DEFAULT_POINT_TRANSACTION_PAGE_SIZE, ge=1, le=MAX_POINT_TRANSACTION_PAGE_SIZE),
+):
+    user = (await db.execute(select(User).where(User.id == user_id))).scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Người dùng không tồn tại.")
+    return await _list_point_transactions(db, user_id=user.id, offset=offset, limit=limit)
 
 
 @app.get("/api/v1/users/{user_id}/bets")
@@ -1267,6 +1490,17 @@ async def place_bet(
             points_earned=None,
         )
         db.add(bet)
+        await db.flush()
+        user.total_points -= payload.stake
+        await _record_point_transaction(
+            db,
+            user=user,
+            delta_points=-payload.stake,
+            transaction_type=PointTransactionType.bet_stake,
+            description=f"Đặt cược: {match.home_team} vs {match.away_team}",
+            bet=bet,
+            match=match,
+        )
         await db.commit()
     except IntegrityError:
         await db.rollback()
@@ -1646,14 +1880,32 @@ async def update_admin_user_points(
     if not user:
         raise HTTPException(status_code=404, detail="Người dùng không tồn tại.")
 
+    reason = payload.reason.strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="Vui lòng nhập lý do điều chỉnh điểm.")
+
+    delta = int(payload.total_points) - int(user.total_points or 0)
     user.total_points = payload.total_points
     db.add(user)
+    transaction = None
+    if delta != 0:
+        transaction = await _record_point_transaction(
+            db,
+            user=user,
+            delta_points=delta,
+            transaction_type=PointTransactionType.admin_adjustment,
+            description=reason,
+            actor=admin_user,
+        )
     await db.commit()
     await db.refresh(user)
+    if transaction is not None:
+        await db.refresh(transaction)
 
     return {
         "id": str(user.id),
         "total_points": user.total_points,
+        "transaction": _serialize_point_transaction(transaction, actor=admin_user) if transaction is not None else None,
     }
 
 
@@ -1702,6 +1954,142 @@ def _user_avatar_payload(user: User) -> dict:
         "avatar_color": user.avatar_color or "#6366f1",
         "initials": _user_initials(user),
     }
+
+
+def _point_transaction_type_label(value: PointTransactionType | str | None) -> str:
+    mapping = {
+        PointTransactionType.bet_stake: "Đặt cược",
+        PointTransactionType.bet_reward: "Thưởng cược",
+        PointTransactionType.bet_refund: "Hoàn điểm",
+        PointTransactionType.recharge_approved: "Nạp điểm",
+        PointTransactionType.admin_adjustment: "Điều chỉnh admin",
+        PointTransactionType.legacy_balance_adjustment: "Điều chỉnh lịch sử",
+    }
+    return mapping.get(value, str(value or "Giao dịch"))
+
+
+async def _record_point_transaction(
+    db: AsyncSession,
+    *,
+    user: User,
+    delta_points: int,
+    balance_after: Optional[int] = None,
+    transaction_type: PointTransactionType,
+    description: str,
+    actor: Optional[User] = None,
+    bet: Optional[Bet] = None,
+    match: Optional[Match] = None,
+    recharge_request: Optional[PointRechargeRequest] = None,
+    is_backfilled: bool = False,
+    created_at: Optional[datetime] = None,
+) -> PointTransaction:
+    transaction = PointTransaction(
+        user_id=user.id,
+        delta_points=int(delta_points),
+        balance_after=int(user.total_points if balance_after is None else balance_after),
+        transaction_type=transaction_type,
+        description=description.strip(),
+        actor_user_id=actor.id if actor is not None else None,
+        bet_id=bet.id if bet is not None else None,
+        match_id=match.id if match is not None else (bet.match_id if bet is not None else None),
+        recharge_request_id=recharge_request.id if recharge_request is not None else None,
+        is_backfilled=is_backfilled,
+        created_at=created_at or _utc_now_naive(),
+    )
+    db.add(transaction)
+    return transaction
+
+
+def _serialize_point_transaction(
+    transaction: PointTransaction,
+    *,
+    actor: Optional[User] = None,
+    bet: Optional[Bet] = None,
+    match: Optional[Match] = None,
+    recharge_request: Optional[PointRechargeRequest] = None,
+) -> dict:
+    actor_payload = None
+    if actor is not None:
+        actor_payload = {
+            "id": str(actor.id),
+            "display_name": _user_display_name(actor),
+            "email": actor.email,
+        }
+    bet_payload = None
+    if bet is not None:
+        bet_payload = {
+            "id": bet.id,
+            "match_id": bet.match_id,
+            "choice": bet.choice,
+            "stake": bet.stake,
+        }
+    match_payload = None
+    if match is not None:
+        match_payload = {
+            "id": match.id,
+            "home_team": match.home_team,
+            "away_team": match.away_team,
+            "home_icon": match.home_icon,
+            "away_icon": match.away_icon,
+        }
+    recharge_payload = None
+    if recharge_request is not None:
+        recharge_payload = {
+            "id": recharge_request.id,
+            "amount": recharge_request.amount,
+        }
+    return {
+        "id": transaction.id,
+        "transaction_type": transaction.transaction_type,
+        "transaction_type_label": _point_transaction_type_label(transaction.transaction_type),
+        "delta_points": transaction.delta_points,
+        "balance_after": transaction.balance_after,
+        "description": transaction.description,
+        "created_at": _serialize_utc_datetime(transaction.created_at),
+        "is_backfilled": bool(transaction.is_backfilled),
+        "actor": actor_payload,
+        "bet": bet_payload,
+        "match": match_payload,
+        "recharge_request": recharge_payload,
+    }
+
+
+async def _list_point_transactions(
+    db: AsyncSession,
+    *,
+    user_id: UUID,
+    offset: int = 0,
+    limit: int = DEFAULT_POINT_TRANSACTION_PAGE_SIZE,
+) -> dict:
+    safe_offset = max(0, offset)
+    safe_limit = _normalize_point_transaction_limit(limit)
+    actor_alias = aliased(User)
+    rows = (
+        await db.execute(
+            select(PointTransaction, actor_alias, Bet, Match, PointRechargeRequest)
+            .outerjoin(actor_alias, PointTransaction.actor_user_id == actor_alias.id)
+            .outerjoin(Bet, PointTransaction.bet_id == Bet.id)
+            .outerjoin(Match, PointTransaction.match_id == Match.id)
+            .outerjoin(PointRechargeRequest, PointTransaction.recharge_request_id == PointRechargeRequest.id)
+            .where(PointTransaction.user_id == user_id)
+            .order_by(desc(PointTransaction.created_at), desc(PointTransaction.id))
+            .offset(safe_offset)
+            .limit(safe_limit + 1)
+        )
+    ).all()
+    page_rows = rows[:safe_limit]
+    items = [
+        _serialize_point_transaction(
+            row.PointTransaction,
+            actor=row[1],
+            bet=row.Bet,
+            match=row.Match,
+            recharge_request=row.PointRechargeRequest,
+        )
+        for row in page_rows
+    ]
+    next_offset = safe_offset + safe_limit if len(rows) > safe_limit else None
+    return {"items": items, "next_offset": next_offset}
 
 
 async def _get_match_reaction_match_ids(
@@ -2220,6 +2608,19 @@ async def approve_recharge_request(
             .values(total_points=User.total_points + request.amount)
             .execution_options(synchronize_session=False)
         )
+        user = (
+            await db.execute(select(User).where(User.id == request.user_id))
+        ).scalars().first()
+        if user:
+            await _record_point_transaction(
+                db,
+                user=user,
+                delta_points=request.amount,
+                transaction_type=PointTransactionType.recharge_approved,
+                description=f"Admin duyệt nạp điểm #{request.id}",
+                actor=admin_user,
+                recharge_request=request,
+            )
         await db.commit()
         await db.refresh(request)
     except HTTPException:
@@ -2582,6 +2983,13 @@ async def resolve_match(
         bets = (await db.execute(
             select(Bet).where(Bet.match_id == match_id)
         )).scalars().all()
+        user_ids = list({bet.user_id for bet in bets})
+        users_by_id = {
+            item.id: item
+            for item in (
+                await db.execute(select(User).where(User.id.in_(user_ids)))
+            ).scalars().all()
+        } if user_ids else {}
 
         total_pool = sum(b.stake for b in bets)
         winning_bets = [b for b in bets if b.choice == winning_choice]
@@ -2593,12 +3001,19 @@ async def resolve_match(
             for bet in bets:
                 bet.points_earned = None
                 db.add(bet)
-                user_q = (await db.execute(
-                    select(User).where(User.id == bet.user_id)
-                )).scalars().first()
+                user_q = users_by_id.get(bet.user_id)
                 if user_q:
                     user_q.total_points += bet.stake
                     db.add(user_q)
+                    await _record_point_transaction(
+                        db,
+                        user=user_q,
+                        delta_points=bet.stake,
+                        transaction_type=PointTransactionType.bet_refund,
+                        description=f"Hoàn điểm trận: {match.home_team} vs {match.away_team}",
+                        bet=bet,
+                        match=match,
+                    )
         else:
             for bet in bets:
                 bet.points_earned = 0
@@ -2623,12 +3038,19 @@ async def resolve_match(
                 bet.points_earned = final_reward
                 db.add(bet)
 
-                user_q = (await db.execute(
-                    select(User).where(User.id == bet.user_id)
-                )).scalars().first()
+                user_q = users_by_id.get(bet.user_id)
                 if user_q:
                     user_q.total_points += final_reward
                     db.add(user_q)
+                    await _record_point_transaction(
+                        db,
+                        user=user_q,
+                        delta_points=final_reward,
+                        transaction_type=PointTransactionType.bet_reward,
+                        description=f"Thưởng cược trận: {match.home_team} vs {match.away_team}",
+                        bet=bet,
+                        match=match,
+                    )
 
         match.status = MatchStatus.finished
         match.resolved_at = _local_now_naive()
@@ -2737,6 +3159,17 @@ async def place_bet_v2(
             points_earned=None,
         )
         db.add(bet)
+        await db.flush()
+        user.total_points -= payload.stake
+        await _record_point_transaction(
+            db,
+            user=user,
+            delta_points=-payload.stake,
+            transaction_type=PointTransactionType.bet_stake,
+            description=f"Đặt cược: {match.home_team} vs {match.away_team}",
+            bet=bet,
+            match=match,
+        )
         await db.commit()
     except IntegrityError:
         await db.rollback()

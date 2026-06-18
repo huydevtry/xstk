@@ -7,6 +7,9 @@ let selectedReactionBet = null;
 let selectedAvatarFile = null;
 let timelineNextOffset = 0;
 let timelineLoading = false;
+let pointTransactions = [];
+let pointHistoryNextOffset = 0;
+let pointHistoryLoading = false;
 
 const PROFILE_USER_ID = new URLSearchParams(window.location.search).get("user_id") || "";
 const IS_OWN_PROFILE = !PROFILE_USER_ID;
@@ -133,6 +136,7 @@ function applyProfileUI() {
     document.getElementById("open-avatar-modal")?.classList.toggle("hidden", !editable);
     document.getElementById("open-name-modal")?.classList.toggle("hidden", !editable);
     document.getElementById("profile-composer-section")?.classList.toggle("hidden", !editable);
+    document.getElementById("open-point-history-sheet")?.classList.toggle("hidden", !editable);
 
     const caption = document.getElementById("timeline-caption");
     if (caption) {
@@ -154,6 +158,26 @@ function renderStats() {
     document.getElementById("stat-lose").textContent = String(loses.length);
 }
 
+function transactionBadgeHtml(item) {
+    const type = String(item?.transaction_type || "");
+    if (type === "legacy_balance_adjustment") {
+        return `<span class="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">Điều chỉnh lịch sử</span>`;
+    }
+    if (type === "admin_adjustment") {
+        return `<span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Admin chỉnh điểm</span>`;
+    }
+    if (type === "recharge_approved") {
+        return `<span class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Nạp điểm</span>`;
+    }
+    if (type === "bet_reward") {
+        return `<span class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Thưởng cược</span>`;
+    }
+    if (type === "bet_refund") {
+        return `<span class="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">Hoàn điểm</span>`;
+    }
+    return `<span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">Đặt cược</span>`;
+}
+
 function renderTimelineState() {
     const container = document.getElementById("profile-status-timeline");
     const emptyEl = document.getElementById("timeline-empty");
@@ -163,6 +187,17 @@ function renderTimelineState() {
     loadMoreBtn.classList.toggle("hidden", timelineNextOffset === null);
     loadMoreBtn.disabled = timelineLoading;
     loadMoreBtn.textContent = timelineLoading ? "Đang tải..." : "Xem thêm";
+}
+
+function renderPointHistoryState() {
+    const emptyEl = document.getElementById("point-history-empty");
+    const loadMoreBtn = document.getElementById("point-history-load-more");
+    const listEl = document.getElementById("point-history-list");
+    if (!emptyEl || !loadMoreBtn || !listEl) return;
+    emptyEl.classList.toggle("hidden", pointTransactions.length > 0);
+    loadMoreBtn.classList.toggle("hidden", pointHistoryNextOffset === null);
+    loadMoreBtn.disabled = pointHistoryLoading;
+    loadMoreBtn.textContent = pointHistoryLoading ? "Đang tải..." : "Xem thêm";
 }
 
 function renderHistoryState() {
@@ -218,8 +253,27 @@ function openHistorySheet() {
     document.body.style.overflow = "hidden";
 }
 
+function openPointHistorySheet() {
+    const sheet = document.getElementById("point-history-sheet");
+    if (!sheet) return;
+    sheet.classList.add("show");
+    sheet.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+    if (!pointTransactions.length && pointHistoryNextOffset !== null) {
+        fetchPointHistory(true);
+    }
+}
+
 function closeHistorySheet() {
     const sheet = document.getElementById("history-sheet");
+    if (!sheet) return;
+    sheet.classList.remove("show");
+    sheet.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+}
+
+function closePointHistorySheet() {
+    const sheet = document.getElementById("point-history-sheet");
     if (!sheet) return;
     sheet.classList.remove("show");
     sheet.setAttribute("aria-hidden", "true");
@@ -306,6 +360,44 @@ function renderHistoryList() {
         `;
     }).join("");
     renderHistoryState();
+}
+
+function renderPointHistoryList() {
+    const listEl = document.getElementById("point-history-list");
+    if (!listEl) return;
+    listEl.innerHTML = pointTransactions.map(item => {
+        const match = item.match || {};
+        const delta = Number(item.delta_points || 0);
+        const tone = delta > 0 ? "text-emerald-600" : delta < 0 ? "text-rose-600" : "text-slate-600";
+        const deltaLabel = `${delta > 0 ? "+" : ""}${formatCoins(Math.abs(delta))}`;
+        const matchInfo = match?.id ? `
+            <button type="button" data-open-match="${match.id}" class="mt-3 flex w-full items-center justify-between gap-3 rounded-2xl border border-sky-100 bg-sky-50 px-3 py-2 text-left transition hover:border-sky-200 hover:bg-sky-100">
+                <div class="min-w-0 truncate text-xs font-semibold text-slate-700">${escapeHtml(match.home_team || "?")} vs ${escapeHtml(match.away_team || "?")}</div>
+                <div class="text-[11px] font-semibold text-sky-700">Xem trận</div>
+            </button>
+        ` : "";
+        return `
+            <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-2">
+                            ${transactionBadgeHtml(item)}
+                            ${item.is_backfilled ? `<span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">Backfill</span>` : ""}
+                        </div>
+                        <div class="mt-2 text-sm font-semibold text-slate-900">${escapeHtml(item.description || item.transaction_type_label || "Giao dịch điểm")}</div>
+                        <div class="mt-1 text-[11px] text-slate-400">${escapeHtml(formatProfileTime(item.created_at))}</div>
+                        ${item.actor ? `<div class="mt-1 text-[11px] text-slate-500">Thực hiện bởi: <strong class="text-slate-700">${escapeHtml(item.actor.display_name || item.actor.email || "Admin")}</strong></div>` : ""}
+                        ${matchInfo}
+                    </div>
+                    <div class="flex-shrink-0 text-right">
+                        <div class="text-sm font-black ${tone}">${delta > 0 ? "+" : delta < 0 ? "-" : ""}${formatCoins(Math.abs(delta))}</div>
+                        <div class="mt-1 text-[11px] text-slate-400">Số dư ${formatCoins(item.balance_after || 0)}</div>
+                    </div>
+                </div>
+            </article>
+        `;
+    }).join("");
+    renderPointHistoryState();
 }
 
 async function fetchViewerProfile() {
@@ -404,12 +496,53 @@ async function fetchTimeline(reset = false) {
     }
 }
 
+async function fetchPointHistory(reset = false) {
+    const errorEl = document.getElementById("point-history-sheet-error");
+    if (pointHistoryLoading || !IS_OWN_PROFILE) return;
+    if (reset) {
+        pointHistoryNextOffset = 0;
+        pointTransactions = [];
+    }
+    pointHistoryLoading = true;
+    renderPointHistoryState();
+    if (errorEl) {
+        errorEl.textContent = "";
+        errorEl.classList.add("hidden");
+    }
+    try {
+        const offset = pointHistoryNextOffset ?? 0;
+        const res = await fetch(`/api/v1/me/point-transactions?offset=${offset}&limit=10`, PROFILE_NO_CACHE_FETCH_OPTIONS);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const items = Array.isArray(data.items) ? data.items : [];
+        pointTransactions = reset ? items : pointTransactions.concat(items);
+        pointHistoryNextOffset = data.next_offset ?? null;
+        renderPointHistoryList();
+    } catch (error) {
+        console.error("fetchPointHistory error:", error);
+        if (errorEl) {
+            errorEl.textContent = "Không thể tải lịch sử điểm lúc này.";
+            errorEl.classList.remove("hidden");
+        }
+    } finally {
+        pointHistoryLoading = false;
+        renderPointHistoryState();
+    }
+}
+
 function initHistorySheet() {
     document.getElementById("open-history-sheet")?.addEventListener("click", openHistorySheet);
     document.getElementById("close-history-sheet")?.addEventListener("click", closeHistorySheet);
+    document.getElementById("open-point-history-sheet")?.addEventListener("click", openPointHistorySheet);
+    document.getElementById("close-point-history-sheet")?.addEventListener("click", closePointHistorySheet);
     document.getElementById("history-sheet")?.addEventListener("click", event => {
         if (event.target?.id === "history-sheet") {
             closeHistorySheet();
+        }
+    });
+    document.getElementById("point-history-sheet")?.addEventListener("click", event => {
+        if (event.target?.id === "point-history-sheet") {
+            closePointHistorySheet();
         }
     });
     document.getElementById("history-bet-list")?.addEventListener("click", event => {
@@ -425,6 +558,12 @@ function initHistorySheet() {
             syncSelectedMatchContext();
             closeHistorySheet();
             document.getElementById("default-taunt-input")?.focus();
+        }
+    });
+    document.getElementById("point-history-list")?.addEventListener("click", event => {
+        const matchButton = event.target.closest("[data-open-match]");
+        if (matchButton) {
+            openMatchDetail(Number(matchButton.dataset.openMatch), true);
         }
     });
 }
@@ -693,9 +832,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     initAvatarModal();
     initNameModal();
     document.getElementById("timeline-load-more")?.addEventListener("click", () => fetchTimeline(false));
+    document.getElementById("point-history-load-more")?.addEventListener("click", () => fetchPointHistory(false));
 
     await fetchViewerProfile();
     await fetchProfile();
     await fetchBetHistory();
     await fetchTimeline(true);
+    renderPointHistoryState();
 });

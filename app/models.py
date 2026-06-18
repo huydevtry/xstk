@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint, Uuid
+from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint, Uuid
 
 from .database import Base
 
@@ -16,6 +16,15 @@ class MatchStatus(str, enum.Enum):
 class PointRechargeStatus(str, enum.Enum):
     pending = "pending"
     approved = "approved"
+
+
+class PointTransactionType(str, enum.Enum):
+    bet_stake = "bet_stake"
+    bet_reward = "bet_reward"
+    bet_refund = "bet_refund"
+    recharge_approved = "recharge_approved"
+    admin_adjustment = "admin_adjustment"
+    legacy_balance_adjustment = "legacy_balance_adjustment"
 
 
 AVATAR_COLORS = [
@@ -113,6 +122,23 @@ class PointRechargeRequest(Base):
     created_at = Column(DateTime, default=_utc_now_naive, nullable=False)
     approved_at = Column(DateTime, nullable=True)
     approved_by_user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class PointTransaction(Base):
+    __tablename__ = "point_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    delta_points = Column(Integer, nullable=False)
+    balance_after = Column(Integer, nullable=False)
+    transaction_type = Column(Enum(PointTransactionType), nullable=False, index=True)
+    description = Column(String, nullable=False)
+    actor_user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    bet_id = Column(Integer, ForeignKey("bets.id", ondelete="SET NULL"), nullable=True, index=True)
+    match_id = Column(Integer, ForeignKey("matches.id", ondelete="SET NULL"), nullable=True, index=True)
+    recharge_request_id = Column(Integer, ForeignKey("point_recharge_requests.id", ondelete="SET NULL"), nullable=True, index=True)
+    is_backfilled = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=_utc_now_naive, nullable=False, index=True)
 
 
 class AppSetting(Base):
