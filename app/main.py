@@ -3208,7 +3208,7 @@ async def resolve_match(
                 total_allocated += reward
 
             remainder = total_pool - total_allocated
-            allocations.sort(key=lambda item: (-item[2], -item[0].stake, item[0].id))
+            allocations.sort(key=lambda item: (-item[2], item[0].created_at, item[0].id))
 
             for index, (bet, reward, _) in enumerate(allocations):
                 final_reward = reward + (1 if index < remainder else 0)

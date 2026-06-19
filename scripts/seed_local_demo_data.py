@@ -357,7 +357,7 @@ def settle_bets(bets: list[dict], match_map: dict[int, dict]) -> None:
             allocated_total += reward
 
         remainder = total_pool - allocated_total
-        exact_rewards.sort(key=lambda item: (-item[2], item[0]["user_id"]))
+        exact_rewards.sort(key=lambda item: (-item[2], item[0]["created_at"], item[0]["user_id"]))
         for idx, (bet, reward, _) in enumerate(exact_rewards):
             final_reward = reward + (1 if idx < remainder else 0)
             bet["points_earned"] = final_reward
