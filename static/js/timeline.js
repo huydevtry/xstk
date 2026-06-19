@@ -75,6 +75,33 @@
         `;
     }
 
+    function formatCoins(value) {
+        return `${Number(value || 0).toLocaleString()}đ`;
+    }
+
+    function renderReactionResult(result) {
+        if (!result?.outcome) return "";
+        if (result.outcome === "win") {
+            return `
+                <div class="mt-3 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                    ✅ ${escapeHtml(result.outcome_label || "Thắng")} +${escapeHtml(formatCoins(result.points_earned || 0))}
+                </div>
+            `;
+        }
+        if (result.outcome === "refund") {
+            return `
+                <div class="mt-3 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
+                    ↺ ${escapeHtml(result.outcome_label || "Hoàn điểm")} ${escapeHtml(formatCoins(result.stake || 0))}
+                </div>
+            `;
+        }
+        return `
+            <div class="mt-3 inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-bold text-rose-700">
+                ❌ ${escapeHtml(result.outcome_label || "Thua")}
+            </div>
+        `;
+    }
+
     function buildAuthorHref(author, options) {
         const hrefBuilder = options?.authorHrefBuilder;
         if (typeof hrefBuilder !== "function" || !author?.id) return null;
@@ -100,6 +127,7 @@
                     ${badge}
                 </div>
                 <p class="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">${escapeHtml(item?.content || "")}</p>
+                ${item?.post_type === "match_reaction" ? renderReactionResult(item?.reaction_result) : ""}
                 ${renderMatchSummary(item?.match)}
             </article>
         `;

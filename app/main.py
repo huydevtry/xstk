@@ -218,11 +218,41 @@ def _serialize_profile_status_match(match: Optional[Match]) -> Optional[dict]:
     }
 
 
+def _serialize_match_reaction_result(
+    *,
+    bet: Optional[Bet],
+    match: Optional[Match],
+) -> Optional[dict]:
+    if bet is None or match is None or not _match_result_published(match):
+        return None
+    if bet.points_earned is None:
+        return {
+            "outcome": "refund",
+            "outcome_label": "Hoàn điểm",
+            "points_earned": None,
+            "stake": bet.stake,
+        }
+    if int(bet.points_earned or 0) > 0:
+        return {
+            "outcome": "win",
+            "outcome_label": "Thắng",
+            "points_earned": bet.points_earned,
+            "stake": bet.stake,
+        }
+    return {
+        "outcome": "lose",
+        "outcome_label": "Thua",
+        "points_earned": 0,
+        "stake": bet.stake,
+    }
+
+
 def _serialize_profile_status_post(
     post: ProfileStatusPost,
     *,
     author: Optional[User] = None,
     match: Optional[Match] = None,
+    bet: Optional[Bet] = None,
 ) -> dict:
     return {
         "id": post.id,
@@ -231,6 +261,9 @@ def _serialize_profile_status_post(
         "created_at": _serialize_utc_datetime(post.created_at),
         "author": _user_avatar_payload(author) if author is not None else None,
         "match": _serialize_profile_status_match(match),
+        "reaction_result": _serialize_match_reaction_result(bet=bet, match=match)
+        if (post.post_type or PROFILE_POST_TYPE_TEXT) == PROFILE_POST_TYPE_MATCH_REACTION
+        else None,
     }
 
 
@@ -244,9 +277,14 @@ async def _list_profile_status_posts(
     safe_offset = max(0, offset)
     safe_limit = _normalize_timeline_limit(limit)
     query = (
-        select(ProfileStatusPost, User, Match)
+        select(ProfileStatusPost, User, Match, Bet)
         .join(User, ProfileStatusPost.user_id == User.id)
         .outerjoin(Match, ProfileStatusPost.match_id == Match.id)
+        .outerjoin(
+            Bet,
+            (ProfileStatusPost.user_id == Bet.user_id)
+            & (ProfileStatusPost.match_id == Bet.match_id),
+        )
     )
     if user_id is not None:
         query = query.where(ProfileStatusPost.user_id == user_id)
@@ -263,6 +301,7 @@ async def _list_profile_status_posts(
             row.ProfileStatusPost,
             author=row.User,
             match=row.Match,
+            bet=row.Bet,
         )
         for row in page_rows
     ]
@@ -1272,6 +1311,7 @@ async def create_profile_status(
 
     match = None
     post_type = PROFILE_POST_TYPE_TEXT
+    bet_record = None
     if payload.match_id is not None:
         match = (
             await db.execute(
@@ -1283,14 +1323,14 @@ async def create_profile_status(
         if not _match_result_published(match):
             raise HTTPException(status_code=400, detail="Chỉ được chia sẻ khi trận đã có kết quả chính thức.")
 
-        bet = (
+        bet_record = (
             await db.execute(
-                select(Bet.id)
+                select(Bet)
                 .where(Bet.user_id == user.id, Bet.match_id == match.id)
                 .limit(1)
             )
-        ).scalar()
-        if bet is None:
+        ).scalars().first()
+        if bet_record is None:
             raise HTTPException(status_code=400, detail="Bạn chưa đặt cược trận này nên chưa thể chia sẻ.")
         if await _has_match_reaction_post(db, user_id=user.id, match_id=match.id):
             raise HTTPException(status_code=400, detail="Bạn đã chia sẻ cảm nghĩ cho trận này rồi.")
@@ -1308,7 +1348,7 @@ async def create_profile_status(
     await db.refresh(user)
 
     return {
-        "status_post": _serialize_profile_status_post(post, author=user, match=match),
+        "status_post": _serialize_profile_status_post(post, author=user, match=match, bet=bet_record),
         "status_timeline": await _get_profile_status_timeline(db, user.id),
         "profile_status": user.profile_status,
     }
