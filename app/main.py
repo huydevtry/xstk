@@ -1843,7 +1843,15 @@ async def get_admin_overview(admin_user: User = Depends(get_admin_user), db: Asy
         await db.execute(select(func.count()).select_from(Match).where(Match.status == MatchStatus.upcoming))
     ).scalar_one()
     total_bets = (await db.execute(select(func.count()).select_from(Bet))).scalar_one()
-    total_points = (await db.execute(select(func.coalesce(func.sum(User.total_points), 0)))).scalar_one()
+    wallet_points = (await db.execute(select(func.coalesce(func.sum(User.total_points), 0)))).scalar_one()
+    locked_points = (
+        await db.execute(
+            select(func.coalesce(func.sum(Bet.stake), 0))
+            .join(Match, Match.id == Bet.match_id)
+            .where(Match.resolved_at.is_(None))
+        )
+    ).scalar_one()
+    total_points = int(wallet_points or 0) + int(locked_points or 0)
     feature_settings = await _get_feature_settings(db)
 
     return {
@@ -1852,6 +1860,8 @@ async def get_admin_overview(admin_user: User = Depends(get_admin_user), db: Asy
         "upcoming_matches": upcoming_matches,
         "total_bets": total_bets,
         "total_points": total_points,
+        "wallet_points": int(wallet_points or 0),
+        "locked_points": int(locked_points or 0),
         "features": feature_settings,
     }
 

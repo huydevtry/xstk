@@ -294,17 +294,25 @@ async function fetchOverview() {
 
 function renderOverview() {
     if (!state.overview) return;
+    const walletPoints = Number(state.overview.wallet_points || 0);
+    const lockedPoints = Number(state.overview.locked_points || 0);
     const metrics = [
         { label: "Tổng user", value: formatNumber(state.overview.total_users), tone: "text-emerald-300" },
-        { label: "Tổng điểm", value: formatCoins(state.overview.total_points), tone: "text-amber-300" },
+        {
+            label: "Điểm đang lưu thông",
+            value: formatCoins(state.overview.total_points),
+            tone: "text-amber-300",
+            hint: `Ví user ${formatCoins(walletPoints)} + kèo chưa settle ${formatCoins(lockedPoints)}`,
+        },
         { label: "Trận đang mở", value: formatNumber(state.overview.upcoming_matches), tone: "text-sky-300" },
-        { label: "Lịch sử báo nhà", value: formatNumber(state.overview.total_bets), tone: "text-pink-300" },
+        { label: "Lịch sử", value: formatNumber(state.overview.total_bets), tone: "text-pink-300" },
     ];
 
     document.getElementById("overview-metrics").innerHTML = metrics.map(metric => `
         <div class="metric-card rounded-3xl p-5">
             <div class="text-xs uppercase tracking-[0.2em] text-slate-400">${metric.label}</div>
             <div class="mt-4 text-3xl font-black ${metric.tone}">${metric.value}</div>
+            ${metric.hint ? `<div class="mt-2 text-xs leading-5 text-slate-400">${metric.hint}</div>` : ""}
         </div>
     `).join("");
 
