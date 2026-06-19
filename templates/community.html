@@ -13,9 +13,16 @@
             <a href="/community" class="min-w-0 flex-1 sm:flex-none">
                 <h1 class="truncate text-lg font-black tracking-[0.18em] text-sky-600 sm:text-xl">Khóa Tu Mùa Hè</h1>
             </a>
-            <a href="/profile" id="user-info" class="max-w-full text-xs bg-white/95 px-3 py-1.5 rounded-full border border-slate-200 text-slate-700 hover:border-sky-300 hover:text-sky-800 transition-colors shadow-sm">
-                Đang tải dữ liệu...
-            </a>
+            <div class="flex max-w-full flex-wrap items-center justify-end gap-2">
+                {% if logout_url %}
+                <a href="{{ logout_url }}" class="text-xs bg-rose-50 px-3 py-1.5 rounded-full border border-rose-200 text-rose-700 hover:bg-rose-100 transition-colors shadow-sm">
+                    Đăng xuất
+                </a>
+                {% endif %}
+                <a href="/profile" id="user-info" class="max-w-full text-xs bg-white/95 px-3 py-1.5 rounded-full border border-slate-200 text-slate-700 hover:border-sky-300 hover:text-sky-800 transition-colors shadow-sm">
+                    Đang tải dữ liệu...
+                </a>
+            </div>
         </div>
     </header>
 

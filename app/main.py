@@ -93,10 +93,15 @@ DEFAULT_POINT_TRANSACTION_PAGE_SIZE = 20
 MAX_POINT_TRANSACTION_PAGE_SIZE = 50
 POINT_TRANSACTIONS_BACKFILL_KEY = "point_transactions_backfill_version"
 POINT_TRANSACTIONS_BACKFILL_VERSION = "admin_seed_v2"
+LOGOUT_URL = "https://learning.huydevtry.com/cdn-cgi/access/logout"
 
 
 def _utc_now_naive() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _logout_url_for_request(request: Request) -> Optional[str]:
+    return LOGOUT_URL
 
 
 def _serialize_utc_datetime(value: Optional[datetime]) -> Optional[str]:
@@ -950,7 +955,11 @@ async def read_home(request: Request, user: Optional[User] = Depends(get_request
         return RedirectResponse(url="/guest", status_code=307)
     return templates.TemplateResponse(
         "index.html",
-        {"request": request, "asset_version": ASSET_VERSION},
+        {
+            "request": request,
+            "asset_version": ASSET_VERSION,
+            "logout_url": _logout_url_for_request(request),
+        },
         headers=NO_CACHE_HEADERS,
     )
 
@@ -988,7 +997,11 @@ async def read_guide(request: Request):
 async def read_admin(request: Request, admin_user: User = Depends(get_admin_user)):
     return templates.TemplateResponse(
         "admin.html",
-        {"request": request, "asset_version": ASSET_VERSION},
+        {
+            "request": request,
+            "asset_version": ASSET_VERSION,
+            "logout_url": _logout_url_for_request(request),
+        },
         headers=NO_CACHE_HEADERS,
     )
 
@@ -997,7 +1010,11 @@ async def read_admin(request: Request, admin_user: User = Depends(get_admin_user
 async def read_profile(request: Request, user: User = Depends(get_current_user)):
     return templates.TemplateResponse(
         "profile.html",
-        {"request": request, "asset_version": ASSET_VERSION},
+        {
+            "request": request,
+            "asset_version": ASSET_VERSION,
+            "logout_url": _logout_url_for_request(request),
+        },
         headers=NO_CACHE_HEADERS,
     )
 
@@ -1006,7 +1023,11 @@ async def read_profile(request: Request, user: User = Depends(get_current_user))
 async def read_community(request: Request, user: User = Depends(get_current_user)):
     return templates.TemplateResponse(
         "community.html",
-        {"request": request, "asset_version": ASSET_VERSION},
+        {
+            "request": request,
+            "asset_version": ASSET_VERSION,
+            "logout_url": _logout_url_for_request(request),
+        },
         headers=NO_CACHE_HEADERS,
     )
 

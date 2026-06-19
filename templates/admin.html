@@ -99,6 +99,11 @@
                         Làm mới dữ liệu
                         </button>
                         <a href="/" class="inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:text-white">Trang chủ</a>
+                        {% if logout_url %}
+                        <a href="{{ logout_url }}" class="inline-flex items-center justify-center rounded-xl border border-rose-500/30 bg-rose-500/12 px-3 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/20">
+                            Đăng xuất
+                        </a>
+                        {% endif %}
                     </div>
                     <div id="user-info" class="admin-user-pill w-full rounded-2xl border border-slate-800 bg-slate-900/90 px-3 py-3 text-xs text-slate-300">
                         Đang tải tài khoản...
