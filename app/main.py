@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.requests import Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,9 +17,6 @@ import hashlib
 import random
 import uuid as uuid_lib
 import asyncio
-import os
-import urllib.parse
-import urllib.request
 from uuid import UUID
 from pathlib import Path
 import csv
@@ -41,7 +38,8 @@ from app.models import (
     PointTransactionType,
     AppSetting,
 )
-from app.dependencies import get_current_user, get_admin_user, ADMIN_EMAILS
+from app.dependencies import get_current_user, get_admin_user, get_request_user, ADMIN_EMAILS
+from app.notifications import notify_admin_recharge_request
 
 logger = logging.getLogger(__name__)
 
@@ -421,46 +419,6 @@ def render_markdown(md_text: str) -> str:
     flush_list()
     return "\n".join(parts)
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-TELEGRAM_ADMIN_CHAT_ID = os.getenv("TELEGRAM_ADMIN_CHAT_ID", "").strip()
-APP_BASE_URL = os.getenv("APP_BASE_URL", "").strip().rstrip("/")
-
-
-def _send_telegram_message_sync(text: str) -> None:
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_ADMIN_CHAT_ID:
-        return
-    data = urllib.parse.urlencode({
-        "chat_id": TELEGRAM_ADMIN_CHAT_ID,
-        "text": text,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": "true",
-    }).encode("utf-8")
-    req = urllib.request.Request(
-        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-        data=data,
-        method="POST",
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
-    with urllib.request.urlopen(req, timeout=8) as response:
-        response.read()
-
-
-async def notify_admin_recharge_request(request_id: int, user: User, amount: int) -> None:
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_ADMIN_CHAT_ID:
-        return
-    admin_url = f"{APP_BASE_URL}/admin" if APP_BASE_URL else "/admin"
-    text = (
-        "Yêu cầu nạp điểm mới\n"
-        f"Mã yêu cầu: #{request_id}\n"
-        f"User: {user.email}\n"
-        f"Số điểm: {amount:,}\n"
-        f"Trang admin: {admin_url}"
-    )
-    try:
-        await asyncio.to_thread(_send_telegram_message_sync, text)
-    except Exception:
-        logger.exception("Failed to send Telegram recharge notification.")
-
 DEFAULT_FEATURE_SETTINGS = {
     "points_enabled": "1",
     "homepage_announcement": "",
@@ -791,6 +749,23 @@ async def startup_event():
             await conn.exec_driver_sql("ALTER TABLE users ADD COLUMN default_taunt VARCHAR")
         if "profile_status" not in user_column_names:
             await conn.exec_driver_sql("ALTER TABLE users ADD COLUMN profile_status VARCHAR")
+        if "is_approved" not in user_column_names:
+            await conn.exec_driver_sql("ALTER TABLE users ADD COLUMN is_approved BOOLEAN DEFAULT 1")
+        if "approved_at" not in user_column_names:
+            await conn.exec_driver_sql("ALTER TABLE users ADD COLUMN approved_at DATETIME")
+        if "approved_by_user_id" not in user_column_names:
+            await conn.exec_driver_sql("ALTER TABLE users ADD COLUMN approved_by_user_id CHAR(32)")
+        await conn.exec_driver_sql("UPDATE users SET is_approved = 1 WHERE is_approved IS NULL")
+        await conn.exec_driver_sql(
+            """
+            UPDATE users
+            SET approved_at = COALESCE(approved_at, created_at)
+            WHERE is_approved = 1
+            """
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_users_is_approved_created_at ON users (is_approved, created_at DESC)"
+        )
 
         profile_status_columns = (
             await conn.exec_driver_sql("PRAGMA table_info(profile_status_posts)")
@@ -970,10 +945,28 @@ class AdminUserPointsPayload(BaseModel):
 # ─── Routes ──────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
-async def read_home(request: Request):
+async def read_home(request: Request, user: Optional[User] = Depends(get_request_user)):
+    if user and not user.is_approved:
+        return RedirectResponse(url="/guest", status_code=307)
     return templates.TemplateResponse(
         "index.html",
         {"request": request, "asset_version": ASSET_VERSION},
+        headers=NO_CACHE_HEADERS,
+    )
+
+
+@app.get("/guest", response_class=HTMLResponse)
+async def read_guest(request: Request, user: Optional[User] = Depends(get_request_user)):
+    if user and user.is_approved:
+        return RedirectResponse(url="/", status_code=307)
+    return templates.TemplateResponse(
+        "guest.html",
+        {
+            "request": request,
+            "asset_version": ASSET_VERSION,
+            "pending_email": user.email if user else None,
+            "pending_display_name": _user_display_name(user) if user else None,
+        },
         headers=NO_CACHE_HEADERS,
     )
 
@@ -1871,7 +1864,14 @@ async def get_admin_users(
     admin_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    users = (await db.execute(select(User).order_by(desc(User.created_at)))).scalars().all()
+    users = (
+        await db.execute(
+            select(User).order_by(
+                case((User.is_approved.is_(False), 0), else_=1),
+                desc(User.created_at),
+            )
+        )
+    ).scalars().all()
     bets = (await db.execute(select(Bet).order_by(desc(Bet.created_at)))).scalars().all()
 
     search = q.strip().lower()
@@ -1892,6 +1892,8 @@ async def get_admin_users(
             "email": user.email,
             "display_name": user.display_name,
             "total_points": user.total_points,
+            "is_approved": bool(user.is_approved),
+            "approved_at": _serialize_utc_datetime(user.approved_at),
             "created_at": _serialize_utc_datetime(user.created_at),
             "last_bet_at": _serialize_utc_datetime(bets_by_user[str(user.id)][0].created_at) if bets_by_user.get(str(user.id)) else None,
             "bet_count": len(bets_by_user.get(str(user.id), [])),
@@ -1909,6 +1911,31 @@ async def get_admin_users(
         }
         for user in filtered_users
     ]
+
+
+@app.post("/api/v1/admin/users/{user_id}/approve")
+async def approve_admin_user(
+    user_id: UUID,
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    user = (await db.execute(select(User).where(User.id == user_id))).scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Người dùng không tồn tại.")
+
+    if not user.is_approved:
+        user.is_approved = True
+        user.approved_at = _utc_now_naive()
+        user.approved_by_user_id = admin_user.id
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+    return {
+        "id": str(user.id),
+        "is_approved": bool(user.is_approved),
+        "approved_at": _serialize_utc_datetime(user.approved_at),
+    }
 
 
 @app.post("/api/v1/admin/users/{user_id}/points")
@@ -3129,6 +3156,7 @@ async def _build_profile_payload(
         "avatar_color": user.avatar_color or "#6366f1",
         "initials": _user_initials(user),
         "is_admin": user.email.strip().lower() in ADMIN_EMAILS,
+        "is_approved": bool(user.is_approved),
         "is_self": True,
         "can_edit": True,
     }

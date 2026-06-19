@@ -459,6 +459,7 @@ function renderUsers() {
         const name = user.display_name || user.email.split("@")[0];
         const created = formatDateTime(user.created_at);
         const lastBet = user.last_bet_at ? formatDateTime(user.last_bet_at) : "Chưa đặt";
+        const approvedAt = user.approved_at ? formatDateTime(user.approved_at) : "Đang chờ duyệt";
         return `
             <div class="glass-panel rounded-3xl p-5">
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -466,10 +467,14 @@ function renderUsers() {
                         <div class="flex flex-wrap items-center gap-2">
                             <h3 class="truncate text-lg font-bold text-white">${escapeHtml(name)}</h3>
                             ${user.is_admin ? `<span class="rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-xs font-semibold text-sky-200">Admin</span>` : ""}
+                            ${user.is_approved
+                                ? `<span class="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-200">Đã duyệt</span>`
+                                : `<span class="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-200">Chờ phê duyệt</span>`}
                         </div>
                         <div class="mt-1 truncate text-sm text-slate-400">${escapeHtml(user.email)}</div>
                         <div class="mt-3 flex flex-wrap gap-2 text-xs text-slate-400">
                             <span class="rounded-full border border-slate-700 bg-slate-950/70 px-2.5 py-1">Tạo: ${escapeHtml(created)}</span>
+                            <span class="rounded-full border ${user.is_approved ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200" : "border-amber-500/25 bg-amber-500/10 text-amber-200"} px-2.5 py-1">Phê duyệt: ${escapeHtml(approvedAt)}</span>
                             <span class="rounded-full border border-slate-700 bg-slate-950/70 px-2.5 py-1">Bet: ${formatNumber(user.bet_count)}</span>
                             <span class="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">Thắng: ${formatNumber(user.win_count)}</span>
                             <span class="rounded-full border border-rose-500/25 bg-rose-500/10 px-2.5 py-1 text-rose-200">Thua: ${formatNumber(user.loss_count)}</span>
@@ -497,6 +502,11 @@ function renderUsers() {
                             <button type="submit" class="rounded-2xl bg-amber-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-amber-300">
                                 Lưu điểm
                             </button>
+                            ${!user.is_approved ? `
+                                <button type="button" class="rounded-2xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400" onclick="approveUser('${escapeHtml(user.id)}')">
+                                    Duyệt user
+                                </button>
+                            ` : ""}
                             <button type="button" class="rounded-2xl border border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:text-white" onclick="toggleUserPointTransactions('${escapeHtml(user.id)}')">
                                 Lịch sử điểm
                             </button>
@@ -518,6 +528,17 @@ function renderUsers() {
             </div>
         `;
     }).join("");
+}
+
+async function approveUser(userId) {
+    if (!window.confirm("Phê duyệt user này để họ vào được trang chủ?")) return;
+    try {
+        await fetchJson(`/api/v1/admin/users/${encodeURIComponent(userId)}/approve`, { method: "POST" });
+        await Promise.all([fetchUsers(state.userSearch), fetchOverview()]);
+        showToast("Đã phê duyệt user mới.", "success");
+    } catch (err) {
+        showToast(err.message || "Không thể phê duyệt user.", "error");
+    }
 }
 
 async function saveUserPoints(event, userId) {
