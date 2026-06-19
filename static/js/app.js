@@ -622,8 +622,7 @@ function renderLeaderboardLoadMoreState() {
         : `
             <span class="leaderboard-expand-icon" aria-hidden="true">↓</span>
             <span class="leaderboard-expand-copy">
-                <span class="leaderboard-expand-title">Xem thêm thành viên</span>
-                <span class="leaderboard-expand-subtitle">Mở rộng bảng cộng đồng</span>
+                <span class="leaderboard-expand-title">Xem đáy xã hội</span>
             </span>`;
 }
 
