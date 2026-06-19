@@ -58,6 +58,7 @@ ASSET_VERSION = str(
         int(Path("static/js/match-detail.js").stat().st_mtime),
         int(Path("static/js/profile.js").stat().st_mtime),
         int(Path("static/js/timeline.js").stat().st_mtime),
+        int(Path("static/js/user-menu.js").stat().st_mtime),
     )
 )
 
@@ -975,6 +976,7 @@ async def read_guest(request: Request, user: Optional[User] = Depends(get_reques
             "asset_version": ASSET_VERSION,
             "pending_email": user.email if user else None,
             "pending_display_name": _user_display_name(user) if user else None,
+            "logout_url": _logout_url_for_request(request),
         },
         headers=NO_CACHE_HEADERS,
     )

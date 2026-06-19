@@ -13,15 +13,16 @@
             <a href="/community" class="min-w-0 flex-1 sm:flex-none">
                 <h1 class="truncate text-lg font-black tracking-[0.18em] text-sky-600 sm:text-xl">Khóa Tu Mùa Hè</h1>
             </a>
-            <div class="flex max-w-full flex-wrap items-center justify-end gap-2">
-                {% if logout_url %}
-                <a href="{{ logout_url }}" class="text-xs bg-rose-50 px-3 py-1.5 rounded-full border border-rose-200 text-rose-700 hover:bg-rose-100 transition-colors shadow-sm">
-                    Đăng xuất
-                </a>
-                {% endif %}
-                <a href="/profile" id="user-info" class="max-w-full text-xs bg-white/95 px-3 py-1.5 rounded-full border border-slate-200 text-slate-700 hover:border-sky-300 hover:text-sky-800 transition-colors shadow-sm">
+            <div class="relative flex max-w-full flex-wrap items-center justify-end gap-2" data-user-menu>
+                <button id="user-info" type="button" data-user-menu-trigger aria-haspopup="menu" aria-expanded="false" class="max-w-full text-xs bg-white/95 px-3 py-1.5 rounded-full border border-slate-200 text-slate-700 hover:border-sky-300 hover:text-sky-800 transition-colors shadow-sm">
                     Đang tải dữ liệu...
-                </a>
+                </button>
+                <div data-user-menu-panel class="hidden absolute right-0 top-full z-50 mt-2 w-48 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                    <a href="/profile" class="block rounded-xl px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100">Xem trang cá nhân</a>
+                    {% if logout_url %}
+                    <a href="{{ logout_url }}" class="mt-1 block rounded-xl px-3 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50">Đăng xuất</a>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </header>
@@ -96,6 +97,7 @@
 
     <script src="/static/js/timeline.js?v={{ asset_version }}"></script>
     <script src="/static/js/match-detail.js?v={{ asset_version }}"></script>
+    <script src="/static/js/user-menu.js?v={{ asset_version }}"></script>
     <script src="/static/js/community.js?v={{ asset_version }}"></script>
 </body>
 </html>
