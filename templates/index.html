@@ -62,14 +62,32 @@
             <div class="leaderboard-title">
                 <h2 class="text-base font-bold uppercase tracking-wide text-slate-500">🤡 Thành Viên Cộng Đồng</h2>
                 <button onclick="toggleLeaderboard()" id="lb-toggle-btn"
-                    class="text-xs text-sky-700 bg-sky-50 px-2.5 py-1 rounded-full border border-sky-200 hover:bg-sky-100 transition-colors">
-                    Thu gọn
+                    type="button"
+                    class="leaderboard-toggle-btn"
+                    aria-controls="leaderboard-container"
+                    aria-expanded="true">
+                    <span class="leaderboard-toggle-icon" aria-hidden="true">⌃</span>
+                    <span class="leaderboard-toggle-text">Thu gọn</span>
                 </button>
             </div>
             <div id="leaderboard-container">
                 <div class="leaderboard-card">
                     <div id="leaderboard-body">
                         <div class="animate-pulse px-3 py-10 text-center text-gray-600 text-xs">Đang tải bảng xếp hạng...</div>
+                    </div>
+                    <div class="leaderboard-load-more-overlay">
+                        <button
+                            id="leaderboard-load-more"
+                            type="button"
+                            onclick="fetchLeaderboard()"
+                            class="leaderboard-expand-btn hidden"
+                        >
+                            <span class="leaderboard-expand-icon" aria-hidden="true">↓</span>
+                            <span class="leaderboard-expand-copy">
+                                <span class="leaderboard-expand-title">Xem thêm thành viên</span>
+                                <span class="leaderboard-expand-subtitle">Mở rộng bảng cộng đồng</span>
+                            </span>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -113,7 +131,12 @@
             const container = document.getElementById("leaderboard-container");
             const btn = document.getElementById("lb-toggle-btn");
             const isHidden = container.classList.toggle("hidden");
-            btn.textContent = isHidden ? "Mở rộng" : "Thu gọn";
+            btn.classList.toggle("is-collapsed", isHidden);
+            btn.setAttribute("aria-expanded", String(!isHidden));
+            btn.innerHTML = `
+                <span class="leaderboard-toggle-icon" aria-hidden="true">${isHidden ? "⌄" : "⌃"}</span>
+                <span class="leaderboard-toggle-text">${isHidden ? "Mở rộng" : "Thu gọn"}</span>
+            `;
         }
     </script>
 

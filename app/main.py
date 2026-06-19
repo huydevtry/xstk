@@ -1711,13 +1711,21 @@ async def get_latest_finished_match_detail(
 
 # ─── GET /api/v1/leaderboard — Bảng Phong Thần ───────────────────────────────
 @app.get("/api/v1/leaderboard")
-async def get_leaderboard(db: AsyncSession = Depends(get_db)):
-    """Top 20 users với badges tự động và trend indicator."""
-    # Lấy top 20 theo total_points
+async def get_leaderboard(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+):
+    """Paginated leaderboard với badges tự động và trend indicator."""
+    total_users = (
+        await db.execute(select(func.count()).select_from(User))
+    ).scalar_one()
+
     users_q = (
         select(User)
         .order_by(desc(User.total_points))
-        .limit(20)
+        .offset(offset)
+        .limit(limit)
     )
     users = (await db.execute(users_q)).scalars().all()
 
@@ -1797,7 +1805,7 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
 
     leaderboard = []
     for idx, user in enumerate(users):
-        rank = idx + 1
+        rank = offset + idx + 1
         uid = str(user.id)
         streak_loss = calc_loss_streak(user_bets.get(uid, []))
         earned_24h = trend_map.get(uid, 0)
@@ -1807,7 +1815,7 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
         # Badge logic
         if rank == 1:
             badge = {"label": "Đại gia", "emoji": "🤑", "color": "gold"}
-        elif rank == len(users):
+        elif rank == total_users:
             badge = {"label": "Báo thủ", "emoji": "🐣", "color": "gray"}
         elif is_contrarian:
             badge = {"label": "Nhà tiên tri", "emoji": "🔮", "color": "purple"}
@@ -1831,7 +1839,12 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
             "badge": badge,
         })
 
-    return leaderboard
+    next_offset = offset + len(leaderboard)
+    return {
+        "items": leaderboard,
+        "next_offset": next_offset if next_offset < total_users else None,
+        "total": total_users,
+    }
 
 
 # ─── GET /api/v1/activity-feed — Live Ticker ──────────────────────────────────

@@ -6,6 +6,8 @@ let finishedSectionLoaded = false;
 let finishedSectionRefreshTimer = null;
 let lastMatchesSignature = "";
 let expandedMatchGroups = new Set();
+let leaderboardNextOffset = 0;
+let leaderboardLoading = false;
 let appSettings = {
     points_enabled: true,
     homepage_announcement: "",
@@ -584,19 +586,52 @@ async function startTicker() {
 async function fetchLeaderboard() {
     const el = document.getElementById("leaderboard-body");
     if (!el) return;
+    if (leaderboardLoading) return;
+
+    leaderboardLoading = true;
+    renderLeaderboardLoadMoreState();
     try {
-        const res = await fetch("/api/v1/leaderboard", NO_CACHE_FETCH_OPTIONS);
+        const offset = leaderboardNextOffset ?? 0;
+        const res = await fetch(`/api/v1/leaderboard?offset=${offset}&limit=10`, NO_CACHE_FETCH_OPTIONS);
         if (!res.ok) return;
         const data = await res.json();
-        renderLeaderboard(data, el);
+        const items = Array.isArray(data.items) ? data.items : [];
+        renderLeaderboard(items, el, { append: offset > 0 });
+        leaderboardNextOffset = data.next_offset ?? null;
     } catch(e) {
         // Silently fail
+    } finally {
+        leaderboardLoading = false;
+        renderLeaderboardLoadMoreState();
     }
 }
 
-function renderLeaderboard(data, container) {
+function renderLeaderboardLoadMoreState() {
+    const btn = document.getElementById("leaderboard-load-more");
+    if (!btn) return;
+    btn.disabled = leaderboardLoading;
+    btn.setAttribute("aria-busy", String(leaderboardLoading));
+    btn.classList.toggle("hidden", leaderboardNextOffset === null);
+    btn.innerHTML = leaderboardLoading
+        ? `
+            <span class="leaderboard-expand-spinner" aria-hidden="true"></span>
+            <span class="leaderboard-expand-copy">
+                <span class="leaderboard-expand-title">Đang tải thêm...</span>
+                <span class="leaderboard-expand-subtitle">Giữ chỗ, bảng sắp dài hơn</span>
+            </span>`
+        : `
+            <span class="leaderboard-expand-icon" aria-hidden="true">↓</span>
+            <span class="leaderboard-expand-copy">
+                <span class="leaderboard-expand-title">Xem thêm thành viên</span>
+                <span class="leaderboard-expand-subtitle">Mở rộng bảng cộng đồng</span>
+            </span>`;
+}
+
+function renderLeaderboard(data, container, { append = false } = {}) {
     if (!data.length) {
-        container.innerHTML = `<div class="text-center py-8 text-slate-500 text-sm">Chưa có dữ liệu xếp hạng.</div>`;
+        if (!append) {
+            container.innerHTML = `<div class="text-center py-8 text-slate-500 text-sm">Chưa có dữ liệu xếp hạng.</div>`;
+        }
         return;
     }
 
@@ -609,7 +644,7 @@ function renderLeaderboard(data, container) {
 
     const RANK_MEDALS = { 1: "🥇", 2: "🥈", 3: "🥉" };
 
-    container.innerHTML = data.map(entry => {
+    const markup = data.map(entry => {
         const rankEl = RANK_MEDALS[entry.rank]
             ? `<span class="lb-rank ${entry.rank === 1 ? "top1" : entry.rank === 2 ? "top2" : "top3"}">${RANK_MEDALS[entry.rank]}</span>`
             : `<span class="lb-rank">${entry.rank}</span>`;
@@ -648,6 +683,13 @@ function renderLeaderboard(data, container) {
             </div>
         </div>`;
     }).join("");
+
+    if (append) {
+        container.insertAdjacentHTML("beforeend", markup);
+        return;
+    }
+
+    container.innerHTML = markup;
 }
 
 
