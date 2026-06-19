@@ -126,6 +126,19 @@ function formatDateTime(value) {
     }).format(date);
 }
 
+function formatDateLabel(value) {
+    if (!value) return "Chưa rõ ngày";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Không hợp lệ";
+    return new Intl.DateTimeFormat("vi-VN", {
+        timeZone: APP_TIME_ZONE,
+        weekday: "long",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+    }).format(date);
+}
+
 function localDateValue(value) {
     const parts = getVNDateParts(value);
     return parts ? `${parts.year}-${parts.month}-${parts.day}` : "";
@@ -172,6 +185,8 @@ function bindTabs() {
     document.querySelectorAll("[data-tab-target]").forEach(btn => {
         btn.addEventListener("click", () => setActiveTab(btn.dataset.tabTarget));
     });
+    document.getElementById("mobile-tab-trigger")?.addEventListener("click", toggleMobileTabMenu);
+    updateMobileTabLabel(state.activeTab);
 }
 
 function setActiveTab(tabName) {
@@ -182,15 +197,59 @@ function setActiveTab(tabName) {
     document.querySelectorAll("[data-tab-panel]").forEach(panel => {
         panel.classList.toggle("hidden", panel.dataset.tabPanel !== tabName);
     });
+    updateMobileTabLabel(tabName);
+    closeMobileTabMenu();
+}
+
+function tabLabel(tabName) {
+    const labels = {
+        overview: "Tổng quan",
+        users: "Người dùng",
+        settings: "Cài đặt",
+        matches: "Trận đấu",
+    };
+    return labels[tabName] || "Menu";
+}
+
+function updateMobileTabLabel(tabName) {
+    const label = document.getElementById("mobile-tab-label");
+    if (label) label.textContent = tabLabel(tabName);
+}
+
+function toggleMobileTabMenu() {
+    const nav = document.getElementById("admin-tab-nav");
+    const trigger = document.getElementById("mobile-tab-trigger");
+    if (!nav || !trigger) return;
+    const willOpen = !nav.classList.contains("is-open");
+    nav.classList.toggle("is-open", willOpen);
+    trigger.setAttribute("aria-expanded", String(willOpen));
+}
+
+function closeMobileTabMenu() {
+    const nav = document.getElementById("admin-tab-nav");
+    const trigger = document.getElementById("mobile-tab-trigger");
+    if (!nav || !trigger) return;
+    nav.classList.remove("is-open");
+    trigger.setAttribute("aria-expanded", "false");
 }
 
 function bindActions() {
-    document.getElementById("refresh-overview")?.addEventListener("click", refreshAll);
     document.getElementById("quick-refresh-users")?.addEventListener("click", () => fetchUsers(""));
     document.getElementById("refresh-users")?.addEventListener("click", () => fetchUsers(state.userSearch));
     document.getElementById("refresh-recharge")?.addEventListener("click", fetchRechargeRequests);
     document.getElementById("save-settings")?.addEventListener("click", saveSettings);
-    document.getElementById("cancel-edit-btn")?.addEventListener("click", resetMatchForm);
+    document.getElementById("cancel-edit-btn")?.addEventListener("click", () => {
+        resetMatchForm();
+        closeMatchComposer();
+    });
+    document.getElementById("open-match-composer")?.addEventListener("click", () => {
+        resetMatchForm();
+        openMatchComposer();
+    });
+    document.getElementById("close-match-composer")?.addEventListener("click", () => {
+        resetMatchForm();
+        closeMatchComposer();
+    });
 
     const searchInput = document.getElementById("user-search");
     let debounceTimer = null;
@@ -199,6 +258,26 @@ function bindActions() {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => fetchUsers(state.userSearch), 250);
     });
+}
+
+function openMatchComposer(mode = "create") {
+    const composer = document.getElementById("match-composer");
+    const openButton = document.getElementById("open-match-composer");
+    if (!composer) return;
+    composer.classList.remove("is-collapsed");
+    openButton?.classList.add("hidden");
+    if (mode === "create") {
+        document.getElementById("match-form-title").textContent = "Thêm trận đấu";
+        document.getElementById("save-match-btn").textContent = "Lưu trận";
+    }
+}
+
+function closeMatchComposer() {
+    const composer = document.getElementById("match-composer");
+    const openButton = document.getElementById("open-match-composer");
+    if (!composer) return;
+    composer.classList.add("is-collapsed");
+    openButton?.classList.remove("hidden");
 }
 
 function bindMatchFormControls() {
@@ -250,10 +329,7 @@ async function refreshAll() {
 }
 
 async function fetchInitialData() {
-    await Promise.all([
-        fetchMe(),
-        refreshAll(),
-    ]);
+    await refreshAll();
 }
 
 async function fetchJson(url, options = {}) {
@@ -263,24 +339,6 @@ async function fetchJson(url, options = {}) {
         throw new Error(data.detail || `Lỗi ${res.status}`);
     }
     return data;
-}
-
-async function fetchMe() {
-    try {
-        const data = await fetchJson("/api/v1/me");
-        document.getElementById("user-info").innerHTML = `
-            <div class="flex items-center gap-2">
-                ${renderMiniAvatar(data)}
-                <div class="min-w-0">
-                    <div class="truncate font-semibold text-white">${escapeHtml(data.display_name || data.email.split("@")[0])}</div>
-                    <div class="truncate text-[11px] text-slate-400">${escapeHtml(data.email)}</div>
-                </div>
-            </div>
-        `;
-    } catch (err) {
-        showToast(err.message || "Không thể tải thông tin admin.", "error");
-        document.getElementById("user-info").textContent = "Lỗi xác thực";
-    }
 }
 
 async function fetchOverview() {
@@ -309,7 +367,7 @@ function renderOverview() {
     ];
 
     document.getElementById("overview-metrics").innerHTML = metrics.map(metric => `
-        <div class="metric-card rounded-3xl p-5">
+        <div class="metric-card rounded-3xl p-4 lg:p-5">
             <div class="text-xs uppercase tracking-[0.2em] text-slate-400">${metric.label}</div>
             <div class="mt-4 text-3xl font-black ${metric.tone}">${metric.value}</div>
             ${metric.hint ? `<div class="mt-2 text-xs leading-5 text-slate-400">${metric.hint}</div>` : ""}
@@ -361,15 +419,6 @@ function renderOverviewFeatures() {
         </div>
     `;
 }
-function renderFeaturePills() {
-    const container = document.getElementById("feature-status");
-    const announcement = String(state.settings.homepage_announcement || "").trim();
-    container.innerHTML = `
-        <span class="rounded-full border px-3 py-1 ${announcement ? "border-sky-500/30 bg-sky-500/10 text-sky-200" : "border-slate-700 bg-slate-900 text-slate-300"}">
-            Thong bao trang chu: ${announcement ? "Dang hien" : "Dang an"}
-        </span>
-    `;
-}
 function renderSettings() {
     const list = document.getElementById("settings-list");
     const announcement = String(state.settings.homepage_announcement || "");
@@ -405,7 +454,6 @@ async function fetchSettings() {
     try {
         state.settings = await fetchJson("/api/v1/admin/settings");
         renderSettings();
-        renderFeaturePills();
         renderOverviewFeatures();
     } catch (err) {
         showToast(err.message || "Không thể tải cài đặt.", "error");
@@ -430,7 +478,6 @@ async function saveSettings() {
             }),
         });
         renderSettings();
-        renderFeaturePills();
         renderOverviewFeatures();
         showToast("Đã lưu cài đặt.", "success");
     } catch (err) {
@@ -469,7 +516,7 @@ function renderUsers() {
         const lastBet = user.last_bet_at ? formatDateTime(user.last_bet_at) : "Chưa đặt";
         const approvedAt = user.approved_at ? formatDateTime(user.approved_at) : "Đang chờ duyệt";
         return `
-            <div class="glass-panel rounded-3xl p-5">
+            <div class="glass-panel rounded-3xl p-4 lg:p-5">
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div class="min-w-0">
                         <div class="flex flex-wrap items-center gap-2">
@@ -489,7 +536,7 @@ function renderUsers() {
                             <span class="rounded-full border border-slate-700 bg-slate-950/70 px-2.5 py-1">Gần nhất: ${escapeHtml(lastBet)}</span>
                         </div>
                     </div>
-                    <form class="w-full max-w-xl flex flex-col gap-2" onsubmit="return saveUserPoints(event, '${escapeHtml(user.id)}')">
+                    <form class="w-full max-w-xl flex flex-col gap-2 lg:min-w-[26rem]" onsubmit="return saveUserPoints(event, '${escapeHtml(user.id)}')">
                         <input
                             class="user-points-input w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm font-bold text-amber-200 outline-none transition focus:border-amber-400 sm:w-40"
                             type="number"
@@ -697,7 +744,7 @@ function renderRechargeRequests() {
         const user = item.user || {};
         const isPending = item.status === "pending";
         return `
-            <div class="rounded-3xl border border-slate-800 bg-slate-950/50 p-4">
+            <div class="rounded-3xl border border-slate-800 bg-slate-950/50 p-4 lg:p-5">
                 <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div class="min-w-0">
                         <div class="flex flex-wrap items-center gap-2">
@@ -755,43 +802,70 @@ function renderMatches() {
         return;
     }
 
-    list.innerHTML = state.matches.map(match => {
-        const status = normalizeMatchStatus(match.status);
-        const canEdit = status !== "finished";
-        const statusClass = status === "finished"
-            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-            : status === "live"
-                ? "border-rose-500/30 bg-rose-500/10 text-rose-200"
-                : "border-sky-500/30 bg-sky-500/10 text-sky-200";
-        return `
-            <div class="glass-panel rounded-3xl p-5">
-                <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                    <div class="min-w-0 flex-1">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <h3 class="truncate text-lg font-black text-white">
-                                ${teamLabel(match.home_team, match.home_icon)} <span class="text-slate-500">vs</span> ${teamLabel(match.away_team, match.away_icon)}
-                            </h3>
-                            <span class="rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass}">${escapeHtml(status)}</span>
-                            ${match.result_published ? `<span class="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-200">Đã giải</span>` : ""}
-                        </div>
-                        <div class="mt-3 grid gap-2 text-sm text-slate-400 sm:grid-cols-2 xl:grid-cols-4">
-                            <div>Kèo: <span class="font-semibold text-white">${Number(match.handicap || 0)}</span></div>
-                            <div>Bắt đầu: <span class="font-semibold text-white">${escapeHtml(formatDateTime(match.start_time))}</span></div>
-                            <div>Kết thúc: <span class="font-semibold text-white">${escapeHtml(formatDateTime(match.end_time))}</span></div>
-                            <div>Tỷ số: <span class="font-semibold text-white">${Number(match.home_score || 0)} - ${Number(match.away_score || 0)}</span></div>
-                        </div>
-                    </div>
-                    <div class="flex flex-wrap gap-2 xl:justify-end">
-                        ${canEdit ? `
-                            <button type="button" class="rounded-2xl border border-sky-500/40 px-3 py-2 text-sm font-medium text-sky-200 transition hover:bg-sky-500/10" onclick="editMatch(${match.id})">Sửa</button>
-                            <button type="button" class="rounded-2xl border border-rose-500/40 px-3 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/10" onclick="deleteMatch(${match.id})">Xóa</button>
-                        ` : ""}
-                        ${status === "finished" && !match.result_published ? resolveForm(match) : ""}
-                    </div>
+    const sortedMatches = [...state.matches].sort((a, b) => {
+        const aTime = new Date(a.start_time || 0).getTime();
+        const bTime = new Date(b.start_time || 0).getTime();
+        return bTime - aTime;
+    });
+    const groupedMatches = sortedMatches.reduce((groups, match) => {
+        const dayKey = localDateValue(match.start_time) || "unknown";
+        if (!groups[dayKey]) groups[dayKey] = [];
+        groups[dayKey].push(match);
+        return groups;
+    }, {});
+
+    list.innerHTML = Object.values(groupedMatches).map(matches => `
+        <section class="match-day-group">
+            <div class="sticky-section-head -mx-2 rounded-2xl border border-slate-800 bg-slate-950/85 px-4 py-3">
+                <div class="flex items-center justify-between gap-3">
+                    <div class="text-sm font-bold text-white">${escapeHtml(formatDateLabel(matches[0]?.start_time))}</div>
+                    <div class="text-xs text-slate-400">${formatNumber(matches.length)} trận</div>
                 </div>
             </div>
-        `;
-    }).join("");
+            <div class="space-y-3">
+                ${matches.map(match => renderMatchCard(match)).join("")}
+            </div>
+        </section>
+    `).join("");
+}
+
+function renderMatchCard(match) {
+    const status = normalizeMatchStatus(match.status);
+    const canEdit = status !== "finished";
+    const statusClass = status === "finished"
+        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+        : status === "live"
+            ? "border-rose-500/30 bg-rose-500/10 text-rose-200"
+            : "border-sky-500/30 bg-sky-500/10 text-sky-200";
+    return `
+        <article class="glass-panel rounded-3xl p-4 lg:p-5">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="rounded-full border border-slate-700 bg-slate-950/70 px-2.5 py-1 text-[11px] font-semibold text-slate-300">#${Number(match.id)}</span>
+                        <span class="rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass}">${escapeHtml(status)}</span>
+                        ${match.result_published ? `<span class="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-200">Đã giải</span>` : ""}
+                    </div>
+                    <h3 class="mt-3 text-base font-black text-white sm:text-lg">
+                        ${teamLabel(match.home_team, match.home_icon)} <span class="text-slate-500">vs</span> ${teamLabel(match.away_team, match.away_icon)}
+                    </h3>
+                    <div class="mt-3 grid gap-2 text-sm text-slate-400 sm:grid-cols-2 xl:grid-cols-4">
+                        <div>Giờ bắt đầu: <span class="font-semibold text-white">${escapeHtml(formatDateTime(match.start_time))}</span></div>
+                        <div>Giờ kết thúc: <span class="font-semibold text-white">${escapeHtml(formatDateTime(match.end_time))}</span></div>
+                        <div>Kèo: <span class="font-semibold text-white">${Number(match.handicap || 0)}</span></div>
+                        <div>Tỷ số: <span class="font-semibold text-white">${Number(match.home_score || 0)} - ${Number(match.away_score || 0)}</span></div>
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-2 lg:max-w-sm lg:justify-end">
+                    ${canEdit ? `
+                        <button type="button" class="rounded-2xl border border-sky-500/40 px-3 py-2 text-sm font-medium text-sky-200 transition hover:bg-sky-500/10" onclick="editMatch(${match.id})">Sửa</button>
+                        <button type="button" class="rounded-2xl border border-rose-500/40 px-3 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/10" onclick="deleteMatch(${match.id})">Xóa</button>
+                    ` : ""}
+                    ${status === "finished" && !match.result_published ? resolveForm(match) : ""}
+                </div>
+            </div>
+        </article>
+    `;
 }
 
 function resolveForm(match) {
@@ -859,6 +933,7 @@ async function saveMatch(event) {
             body: JSON.stringify(payload),
         });
         resetMatchForm();
+        closeMatchComposer();
         await Promise.all([fetchMatches(), fetchOverview()]);
         showToast(matchId ? "Đã cập nhật trận đấu." : "Đã thêm trận đấu.", "success");
     } catch (err) {
@@ -872,6 +947,7 @@ async function saveMatch(event) {
 function editMatch(matchId) {
     const match = state.matches.find(item => Number(item.id) === Number(matchId));
     if (!match) return;
+    openMatchComposer("edit");
     document.getElementById("match-id").value = match.id;
     document.getElementById("home-team").value = match.home_team || "";
     document.getElementById("away-team").value = match.away_team || "";
@@ -888,7 +964,7 @@ function editMatch(matchId) {
     document.getElementById("save-match-btn").textContent = "Cập nhật trận";
     document.getElementById("cancel-edit-btn").classList.remove("hidden");
     setActiveTab("matches");
-    document.getElementById("match-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById("match-composer")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function resetMatchForm() {

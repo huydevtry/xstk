@@ -13,6 +13,9 @@
                 radial-gradient(circle at top right, rgba(14, 165, 233, 0.12), transparent 24%),
                 #020617;
         }
+        .admin-main {
+            max-width: 1400px;
+        }
         .glass-panel {
             background: rgba(15, 23, 42, 0.82);
             border: 1px solid rgba(71, 85, 105, 0.5);
@@ -22,6 +25,61 @@
         .metric-card {
             background: linear-gradient(180deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.98));
             border: 1px solid rgba(71, 85, 105, 0.45);
+        }
+        .admin-panel-compact {
+            padding: 1rem;
+        }
+        .match-composer {
+            overflow: hidden;
+            transition: max-height 0.22s ease, opacity 0.2s ease, transform 0.2s ease, margin-top 0.2s ease;
+            max-height: 1200px;
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .match-composer.is-collapsed {
+            max-height: 0;
+            opacity: 0;
+            transform: translateY(-8px);
+            margin-top: 0;
+            pointer-events: none;
+        }
+        .match-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+        }
+        .overview-dual-grid {
+            display: grid;
+            gap: 1rem;
+        }
+        .match-list-grid {
+            display: grid;
+            gap: 1rem;
+        }
+        .match-day-group {
+            display: grid;
+            gap: 0.75rem;
+        }
+        .admin-chip-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .sticky-section-head {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            backdrop-filter: blur(12px);
+        }
+        @media (min-width: 1024px) {
+            .admin-panel-compact {
+                padding: 1.25rem;
+            }
+            .overview-dual-grid {
+                grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+            }
         }
         .tab-btn.active {
             background: rgba(16, 185, 129, 0.15);
@@ -37,109 +95,81 @@
             -moz-appearance: textfield;
         }
         @media (max-width: 640px) {
-            .admin-header-summary {
-                display: none;
-            }
             .admin-header-shell {
-                gap: 0.75rem;
-            }
-            .admin-header-top {
-                gap: 0.75rem;
-            }
-            .admin-header-actions {
-                width: 100%;
-                align-items: stretch;
                 gap: 0.5rem;
             }
-            .admin-header-action-row {
-                width: 100%;
-                justify-content: space-between;
-            }
-            .admin-user-pill {
-                padding: 0.65rem 0.8rem;
+            .admin-header-top {
+                gap: 0.5rem;
             }
             .admin-tab-row {
-                margin-top: 0.75rem;
-                gap: 0.75rem;
+                margin-top: 0.5rem;
+                gap: 0.5rem;
             }
             .admin-tab-row nav {
+                display: none;
+                width: 100%;
+            }
+            .admin-tab-row nav.is-open {
                 display: grid;
                 grid-template-columns: repeat(2, minmax(0, 1fr));
                 gap: 0.5rem;
-                width: 100%;
             }
-            .admin-tab-row nav .tab-btn {
+            .admin-tab-row nav .tab-btn,
+            .mobile-tab-trigger {
                 width: 100%;
                 justify-content: center;
-            }
-            .admin-tab-row #feature-status {
-                width: 100%;
             }
         }
     </style>
 </head>
-<body class="admin-shell min-h-screen text-slate-100 antialiased pb-10">
+<body class="admin-shell min-h-screen text-slate-100 antialiased pb-8">
     <header class="sticky top-0 z-50 border-b border-slate-800/80 bg-slate-950/85 backdrop-blur">
-        <div class="admin-header-shell mx-auto max-w-7xl px-4 py-3 lg:px-6 lg:py-4">
-            <div class="admin-header-top flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div class="admin-header-shell mx-auto max-w-7xl px-4 py-2.5 lg:px-6 lg:py-3">
+            <div class="admin-header-top flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                 <div class="min-w-0 flex-1">
-                    <div class="flex items-start gap-3">
-                        <a href="/" class="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/10 text-sm font-black text-emerald-300 lg:h-11 lg:w-11">AD</a>
+                    <div class="flex items-center gap-3">
+                        <a href="/" class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/10 text-xs font-black text-emerald-300 lg:h-10 lg:w-10">AD</a>
                         <div class="min-w-0">
-                            <p class="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">Admin Workspace</p>
-                            <h1 class="truncate text-lg font-black text-white md:text-2xl">Quản trị hệ thống</h1>
-                            <p class="admin-header-summary mt-1 text-sm text-slate-400">Quản lý user, trận đấu và thông báo hiển thị cho cộng đồng.</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="admin-header-actions flex flex-col gap-3 xl:min-w-[22rem] xl:max-w-[28rem] xl:items-end">
-                    <div class="admin-header-action-row flex w-full flex-wrap items-center gap-2 xl:justify-end">
-                        <button id="refresh-overview" type="button" class="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/12 px-3 py-2 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20">
-                        Làm mới dữ liệu
-                        </button>
-                        <a href="/" class="inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:text-white">Trang chủ</a>
-                    </div>
-                    <div class="relative w-full" data-user-menu>
-                        <button id="user-info" type="button" data-user-menu-trigger aria-haspopup="menu" aria-expanded="false" class="admin-user-pill w-full rounded-2xl border border-slate-800 bg-slate-900/90 px-3 py-3 text-left text-xs text-slate-300 transition hover:border-slate-700">
-                            Đang tải tài khoản...
-                        </button>
-                        <div data-user-menu-panel class="user-menu-panel hidden absolute right-0 top-full z-50 mt-2 w-56 rounded-[1.4rem] p-2.5 shadow-2xl">
-                            <a href="/profile" class="user-menu-item block rounded-2xl px-3 py-2.5 text-sm font-semibold text-slate-700 transition">Xem trang cá nhân</a>
-                            <a href="/admin" class="user-menu-item mt-2 block rounded-2xl px-3 py-2.5 text-sm font-semibold text-sky-800 transition">Trang admin</a>
-                            {% if logout_url %}
-                            <a href="{{ logout_url }}" class="user-menu-item user-menu-item-danger mt-2 block rounded-2xl px-3 py-2.5 text-sm font-semibold transition">Đăng xuất</a>
-                            {% endif %}
+                            <h1 class="truncate text-base font-black text-white md:text-xl">Admin</h1>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="admin-tab-row mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <nav class="flex flex-wrap gap-2">
+            <div class="admin-tab-row mt-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                <button
+                    id="mobile-tab-trigger"
+                    type="button"
+                    class="mobile-tab-trigger inline-flex items-center justify-between rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-200 transition lg:hidden"
+                    aria-expanded="false"
+                    aria-controls="admin-tab-nav"
+                >
+                    <span id="mobile-tab-label">Tổng quan</span>
+                    <span class="text-slate-500">Menu</span>
+                </button>
+                <nav id="admin-tab-nav" class="flex flex-wrap gap-2">
                     <button class="tab-btn active rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-300 transition" data-tab-target="overview">Tổng quan</button>
                     <button class="tab-btn rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-300 transition" data-tab-target="users">Người dùng</button>
                     <button class="tab-btn rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-300 transition" data-tab-target="settings">Cài đặt</button>
                     <button class="tab-btn rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-300 transition" data-tab-target="matches">Trận đấu</button>
                 </nav>
-                <div id="feature-status" class="flex flex-wrap gap-2 text-xs"></div>
             </div>
         </div>
     </header>
 
-    <main class="mx-auto mt-6 flex max-w-7xl flex-col gap-6 px-4 lg:px-6">
+    <main class="admin-main mx-auto mt-4 flex flex-col gap-4 px-4 lg:mt-5 lg:gap-5 lg:px-6">
         <section id="toast" class="hidden rounded-2xl border px-4 py-3 text-sm font-medium"></section>
 
-        <section data-tab-panel="overview" class="tab-panel flex flex-col gap-6">
-            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" id="overview-metrics">
-                <div class="metric-card animate-pulse rounded-3xl p-5 h-28"></div>
-                <div class="metric-card animate-pulse rounded-3xl p-5 h-28"></div>
-                <div class="metric-card animate-pulse rounded-3xl p-5 h-28"></div>
-                <div class="metric-card animate-pulse rounded-3xl p-5 h-28"></div>
+        <section data-tab-panel="overview" class="tab-panel flex flex-col gap-4 lg:gap-5">
+            <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" id="overview-metrics">
+                <div class="metric-card animate-pulse rounded-3xl h-28"></div>
+                <div class="metric-card animate-pulse rounded-3xl h-28"></div>
+                <div class="metric-card animate-pulse rounded-3xl h-28"></div>
+                <div class="metric-card animate-pulse rounded-3xl h-28"></div>
             </div>
 
-            <div class="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-                <div class="glass-panel rounded-3xl p-5">
+            <div class="overview-dual-grid">
+                <div class="glass-panel admin-panel-compact rounded-3xl">
                     <div class="mb-4 flex items-center justify-between">
                         <div>
                             <p class="text-xs uppercase tracking-[0.2em] text-slate-400">User snapshot</p>
@@ -150,7 +180,7 @@
                     <div id="overview-user-list" class="space-y-3"></div>
                 </div>
 
-                <div class="glass-panel rounded-3xl p-5">
+                <div class="glass-panel admin-panel-compact rounded-3xl">
                     <div class="mb-4">
                         <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Feature state</p>
                         <h2 class="text-lg font-bold text-white">Trạng thái tính năng</h2>
@@ -159,7 +189,7 @@
                 </div>
             </div>
 
-            <div class="glass-panel rounded-3xl p-5">
+            <div class="glass-panel admin-panel-compact rounded-3xl">
                 <div class="mb-4 flex items-center justify-between gap-3">
                     <div>
                         <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Recharge queue</p>
@@ -173,8 +203,8 @@
             </div>
         </section>
 
-        <section data-tab-panel="users" class="tab-panel hidden flex-col gap-5">
-            <div class="glass-panel rounded-3xl p-5">
+        <section data-tab-panel="users" class="tab-panel hidden flex-col gap-4 lg:gap-5">
+            <div class="glass-panel admin-panel-compact rounded-3xl">
                 <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                         <p class="text-xs uppercase tracking-[0.2em] text-slate-400">User management</p>
@@ -189,8 +219,8 @@
             <div id="admin-user-list" class="space-y-4"></div>
         </section>
 
-        <section data-tab-panel="settings" class="tab-panel hidden flex-col gap-5">
-            <div class="glass-panel rounded-3xl p-5">
+        <section data-tab-panel="settings" class="tab-panel hidden flex-col gap-4 lg:gap-5">
+            <div class="glass-panel admin-panel-compact rounded-3xl">
                 <div class="mb-5">
                     <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Settings</p>
                     <h2 class="text-lg font-bold text-white">Cài đặt thông báo trang chủ</h2>
@@ -202,50 +232,73 @@
             </div>
         </section>
 
-        <section data-tab-panel="matches" class="tab-panel hidden flex-col gap-5">
-            <div class="glass-panel rounded-3xl p-5">
-                <div class="mb-4 flex items-center justify-between">
+        <section data-tab-panel="matches" class="tab-panel hidden flex-col gap-4 lg:gap-5">
+            <div class="glass-panel admin-panel-compact rounded-3xl">
+                <div class="match-toolbar">
                     <div>
                         <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Match editor</p>
-                        <h2 id="match-form-title" class="text-lg font-bold text-white">Thêm trận đấu</h2>
+                        <h2 class="text-lg font-bold text-white">Soạn lịch thi đấu</h2>
                     </div>
-                    <button id="cancel-edit-btn" type="button" class="hidden rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white">Hủy sửa</button>
+                    <div class="admin-chip-row">
+                        <button id="open-match-composer" type="button" class="rounded-2xl bg-sky-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-sky-400">
+                            Thêm trận
+                        </button>
+                        <button id="cancel-edit-btn" type="button" class="hidden rounded-2xl border border-slate-700 px-4 py-2.5 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white">
+                            Đóng
+                        </button>
+                    </div>
                 </div>
-                <form id="match-form" class="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <input type="hidden" id="match-id">
-                    <input id="home-team" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" placeholder="Đội nhà" required maxlength="80">
-                    <input id="away-team" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" placeholder="Đội khách" required maxlength="80">
-                    <div class="space-y-2">
-                        <input id="home-country-code" maxlength="16" inputmode="latin" autocomplete="off" class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm uppercase tracking-[0.2em] text-white outline-none transition focus:border-emerald-500" placeholder="Mã quốc gia đội nhà, ví dụ: gb-sct">
-                        <p id="home-flag-preview" class="text-xs text-slate-400">Flag URL sẽ tự sinh tại đây.</p>
+                <div id="match-composer" class="match-composer is-collapsed mt-4">
+                    <div class="rounded-3xl border border-slate-800 bg-slate-950/55 p-4 lg:p-5">
+                        <div class="mb-4 flex items-center justify-between gap-3">
+                            <div>
+                                <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Composer</div>
+                                <h3 id="match-form-title" class="mt-1 text-base font-bold text-white">Thêm trận đấu</h3>
+                            </div>
+                            <span class="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-400">Tự sinh giờ kết thúc + flag URL</span>
+                        </div>
+                        <form id="match-form" class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                            <input type="hidden" id="match-id">
+                            <input id="home-team" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" placeholder="Đội nhà" required maxlength="80">
+                            <input id="away-team" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" placeholder="Đội khách" required maxlength="80">
+                            <input id="handicap" type="number" step="0.25" value="0" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" placeholder="Kèo chấp">
+                            <div class="space-y-2">
+                                <input id="home-country-code" maxlength="16" inputmode="latin" autocomplete="off" class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm uppercase tracking-[0.2em] text-white outline-none transition focus:border-emerald-500" placeholder="Mã quốc gia đội nhà, ví dụ: gb-sct">
+                                <p id="home-flag-preview" class="text-xs text-slate-400">Flag URL sẽ tự sinh tại đây.</p>
+                            </div>
+                            <div class="space-y-2">
+                                <input id="away-country-code" maxlength="16" inputmode="latin" autocomplete="off" class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm uppercase tracking-[0.2em] text-white outline-none transition focus:border-emerald-500" placeholder="Mã quốc gia đội khách, ví dụ: gb-sct">
+                                <p id="away-flag-preview" class="text-xs text-slate-400">Flag URL sẽ tự sinh tại đây.</p>
+                            </div>
+                            <select id="status" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500">
+                                <option value="upcoming">upcoming</option>
+                                <option value="live">live</option>
+                            </select>
+                            <input id="start-date" type="date" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" required>
+                            <input id="start-time" type="time" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" required>
+                            <input id="end-time" type="datetime-local" readonly class="rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-2.5 text-sm text-slate-300 outline-none transition" aria-label="Giờ kết thúc tự động">
+                            <div class="md:col-span-2 xl:col-span-3 flex flex-wrap justify-end gap-2 pt-1">
+                                <button type="button" id="close-match-composer" class="rounded-2xl border border-slate-700 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:text-white">
+                                    Đóng
+                                </button>
+                                <button id="save-match-btn" type="submit" class="rounded-2xl bg-sky-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-sky-400">
+                                    Lưu trận
+                                </button>
+                            </div>
+                        </form>
                     </div>
-                    <div class="space-y-2">
-                        <input id="away-country-code" maxlength="16" inputmode="latin" autocomplete="off" class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm uppercase tracking-[0.2em] text-white outline-none transition focus:border-emerald-500" placeholder="Mã quốc gia đội khách, ví dụ: gb-sct">
-                        <p id="away-flag-preview" class="text-xs text-slate-400">Flag URL sẽ tự sinh tại đây.</p>
-                    </div>
-                    <input id="handicap" type="number" step="0.25" value="0" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" placeholder="Kèo chấp">
-                    <input id="start-date" type="date" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" required>
-                    <input id="start-time" type="time" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" required>
-                    <input id="end-time" type="datetime-local" readonly class="rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-2.5 text-sm text-slate-300 outline-none transition" aria-label="Giờ kết thúc tự động">
-                    <select id="status" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500">
-                        <option value="upcoming">upcoming</option>
-                        <option value="live">live</option>
-                    </select>
-                    <button id="save-match-btn" type="submit" class="rounded-2xl bg-sky-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-sky-400">
-                        Lưu trận
-                    </button>
-                </form>
+                </div>
             </div>
 
-            <div class="glass-panel rounded-3xl p-5">
+            <div class="glass-panel admin-panel-compact rounded-3xl">
                 <div class="mb-4 flex items-center justify-between gap-3">
                     <div>
                         <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Match operations</p>
                         <h2 class="text-lg font-bold text-white">Quản lý trận đấu</h2>
                     </div>
-                    <span class="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-400">Nhập tỉ số để giải trận</span>
+                    <span class="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-400">Sắp theo ngày bắt đầu mới nhất</span>
                 </div>
-                <div id="admin-match-list" class="space-y-4">
+                <div id="admin-match-list" class="match-list-grid">
                     <div class="animate-pulse rounded-2xl border border-slate-800 bg-slate-950/60 h-28"></div>
                 </div>
             </div>
