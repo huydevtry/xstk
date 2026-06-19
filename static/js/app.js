@@ -4,6 +4,8 @@ let placedBets = new Set();      // match IDs đã cược trong session này
 let matchDetailCache = new Map();
 let finishedSectionLoaded = false;
 let finishedSectionRefreshTimer = null;
+let lastMatchesSignature = "";
+let expandedMatchGroups = new Set();
 let appSettings = {
     points_enabled: true,
     homepage_announcement: "",
@@ -210,7 +212,6 @@ async function fetchUserProfile() {
         if (!res.ok) throw new Error();
         currentUser = await res.json();
         renderUserInfo();
-        fetchUpcomingMatches();
     } catch {
         el.innerHTML = `<span class="text-red-400 font-medium">Lỗi kết nối Auth</span>`;
     }
@@ -233,13 +234,21 @@ function updateDisplayedPoints(newTotal) {
 async function fetchUpcomingMatches() {
     const listEl = document.getElementById("match-list");
     try {
-        matchDetailCache.clear();
-        window.MatchDetailModal?.resetCache?.();
         const res = await fetch("/api/v1/matches", NO_CACHE_FETCH_OPTIONS);
         const matches = await res.json();
+        const matchesSignature = JSON.stringify(matches);
+
+        if (matchesSignature === lastMatchesSignature && listEl?.children.length) {
+            return;
+        }
+
+        lastMatchesSignature = matchesSignature;
+        matchDetailCache.clear();
+        window.MatchDetailModal?.resetCache?.();
 
         if (!matches.length) {
             listEl.innerHTML = `<div class="text-center py-12 text-slate-500 text-sm">Hiện chưa có trận đấu nào đang mở cược.</div>`;
+            expandedMatchGroups = new Set();
             return;
         }
 
@@ -252,12 +261,14 @@ async function fetchUpcomingMatches() {
         });
 
         const sortedDates = Object.keys(grouped).sort();
+        const nextExpandedGroups = new Set();
         let html = "";
 
         sortedDates.forEach((dateKey, idx) => {
             const dateMatches = grouped[dateKey];
             const displayDate = dateKey.split("-").reverse().join("/");
-            const expanded = idx === 0;
+            const expanded = expandedMatchGroups.size ? expandedMatchGroups.has(dateKey) : idx === 0;
+            if (expanded) nextExpandedGroups.add(dateKey);
 
             const matchesHtml = dateMatches.map(m => renderMatchCard(m)).join("");
 
@@ -275,6 +286,7 @@ async function fetchUpcomingMatches() {
                 </div>`;
         });
 
+        expandedMatchGroups = nextExpandedGroups;
         listEl.innerHTML = html;
 
         // Sau khi render xong, fetch avatar stacks cho tất cả trận
@@ -502,8 +514,14 @@ function summaryTile(label, value, valueClass) {
 window.toggleGroup = function(dateKey) {
     const content = document.getElementById(`content-${dateKey}`);
     const icon = document.getElementById(`icon-${dateKey}`);
-    content.classList.toggle("hidden");
-    icon.classList.toggle("rotate-180");
+    if (!content) return;
+    const isHidden = content.classList.toggle("hidden");
+    icon?.classList.toggle("rotate-180");
+    if (isHidden) {
+        expandedMatchGroups.delete(dateKey);
+    } else {
+        expandedMatchGroups.add(dateKey);
+    }
 };
 
 window.toggleFinishedSection = function() {
