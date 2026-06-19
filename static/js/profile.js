@@ -72,19 +72,7 @@ function renderBadge(badge) {
 function renderHeaderUserInfo() {
     const host = document.getElementById("user-info");
     if (!host || !viewerData) return;
-    const displayName = viewerData.display_name || viewerData.email.split("@")[0];
-    const avatarSrc = normalizeImageSrc(viewerData.avatar_url);
-    const avatarHtml = avatarSrc
-        ? `<img src="${safeImageSrc(viewerData.avatar_url)}" alt="" class="h-5 w-5 rounded-full border border-sky-300 object-cover flex-shrink-0">`
-        : `<span class="flex h-5 w-5 items-center justify-center rounded-full border border-sky-300 text-[9px] font-black text-white flex-shrink-0" style="background:${safeCssColor(viewerData.avatar_color)}">${escapeHtml(viewerData.initials || "??")}</span>`;
-    host.title = viewerData.email;
-    host.innerHTML = `
-        <span class="inline-flex max-w-full items-center gap-2">
-            ${avatarHtml}
-            <span class="max-w-[8rem] truncate font-semibold text-slate-900">${escapeHtml(displayName)}</span>
-            <span class="text-slate-300">|</span>
-            <span class="font-bold text-[#D3af37]">${Number(viewerData.total_points || 0).toLocaleString()}</span><span class="text-[#D3af37]">d</span>
-        </span>`;
+    window.UserShell?.renderUserInfo?.(host, viewerData);
 }
 
 function applyNavState() {

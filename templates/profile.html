@@ -159,20 +159,18 @@
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans antialiased pb-24">
-    <header class="bg-white/95 backdrop-blur border-b border-slate-200 sticky top-0 z-50 px-4 py-3 flex justify-between items-center shadow-sm">
-        <a href="/" class="text-sky-600 font-black text-xl tracking-wider hover:text-sky-500 transition-colors">Khóa Tu Mùa Hè</a>
-        <div class="relative flex max-w-full flex-wrap items-center justify-end gap-2" data-user-menu>
-            <button id="user-info" type="button" data-user-menu-trigger aria-haspopup="menu" aria-expanded="false" class="text-xs bg-white px-3 py-1.5 rounded-full border border-slate-200 text-slate-700 shadow-sm hover:border-sky-300 hover:text-sky-800 transition-colors">
-                Đang tải...
-            </button>
-            <div data-user-menu-panel class="hidden absolute right-0 top-full z-50 mt-2 w-48 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
-                <a href="/profile" class="block rounded-xl px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100">Xem trang cá nhân</a>
-                {% if logout_url %}
-                <a href="{{ logout_url }}" class="mt-1 block rounded-xl px-3 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50">Đăng xuất</a>
-                {% endif %}
-            </div>
-        </div>
-    </header>
+    {% set header_root_class = "bg-white/95 backdrop-blur border-b border-slate-200 sticky top-0 z-50 shadow-sm" %}
+    {% set header_row_class = "px-4 py-3 flex justify-between items-center gap-3" %}
+    {% set header_title = "Khóa Tu Mùa Hè" %}
+    {% set header_title_href = "/" %}
+    {% set header_title_link_class = "min-w-0" %}
+    {% set header_title_class = "text-sky-600 font-black text-xl tracking-wider hover:text-sky-500 transition-colors truncate" %}
+    {% set show_user_menu = true %}
+    {% set header_actions_class = "flex max-w-full flex-wrap items-center justify-end gap-2" %}
+    {% set show_ticker = false %}
+    {% set user_info_button_class = "max-w-full text-xs bg-white px-3 py-1.5 rounded-full border border-slate-200 text-slate-700 shadow-sm hover:border-sky-300 hover:text-sky-800 transition-colors" %}
+    {% set user_menu_panel_class = "user-menu-panel hidden absolute right-0 top-full z-50 mt-2 w-52 rounded-[1.4rem] p-2.5 shadow-xl" %}
+    {% include "partials/user_header.html" %}
 
     <main class="max-w-xl mx-auto px-4 mt-5">
         <section class="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
@@ -309,26 +307,8 @@
         </section>
     </main>
 
-    <nav class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-slate-200 flex justify-around py-2 z-50 shadow-[0_-8px_24px_rgba(15,23,42,0.05)]">
-        <a id="nav-feed" href="/community" class="flex flex-col items-center gap-0.5 text-slate-500 hover:text-sky-600 transition-colors px-4 py-1">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5V4H2v16h5m10 0v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6m10 0H7"/>
-            </svg>
-            <span class="text-xs">Feed</span>
-        </a>
-        <a id="nav-home" href="/" class="flex flex-col items-center gap-0.5 text-slate-500 hover:text-sky-600 transition-colors px-4 py-1">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
-            </svg>
-            <span class="text-xs">Trang chủ</span>
-        </a>
-        <a id="nav-profile" href="/profile" class="flex flex-col items-center gap-0.5 text-slate-500 hover:text-sky-600 transition-colors px-4 py-1">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-            </svg>
-            <span id="nav-profile-label" class="text-xs">Cá nhân</span>
-        </a>
-    </nav>
+    {% set footer_root_class = "fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-slate-200 flex justify-around py-2 z-50 shadow-[0_-8px_24px_rgba(15,23,42,0.05)]" %}
+    {% include "partials/user_footer_nav.html" %}
 
     <div id="history-sheet" class="bottom-sheet" aria-hidden="true">
         <div class="bottom-sheet-panel">
@@ -468,6 +448,7 @@
 
     <script src="/static/js/timeline.js?v={{ asset_version }}"></script>
     <script src="/static/js/match-detail.js?v={{ asset_version }}"></script>
+    <script src="/static/js/user-shell.js?v={{ asset_version }}"></script>
     <script src="/static/js/user-menu.js?v={{ asset_version }}"></script>
     <script src="/static/js/profile.js?v={{ asset_version }}"></script>
 </body>

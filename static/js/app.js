@@ -219,19 +219,7 @@ async function fetchUserProfile() {
 function renderUserInfo() {
     const el = document.getElementById("user-info");
     if (!currentUser) return;
-    const shortEmail = currentUser.email.split("@")[0];
-    const displayName = currentUser.display_name || shortEmail;
-    el.title = currentUser.email;
-    el.innerHTML = `
-        <span class="inline-flex items-center gap-2 max-w-full">
-            ${renderMiniAvatar(currentUser)}
-            <span class="font-semibold text-slate-900 truncate max-w-[8rem]">${escapeHtml(displayName)}</span>
-            <span class="text-slate-300">|</span>
-            <span class="text-[#D3af37] font-bold" id="user-points">${currentUser.total_points.toLocaleString()}</span><span class="text-[#D3af37]">d</span>
-        </span>`;
-
-    document.getElementById("admin-header-link")?.classList.toggle("hidden", !currentUser.is_admin);
-    document.getElementById("admin-nav-link")?.classList.toggle("hidden", !currentUser.is_admin);
+    window.UserShell?.renderUserInfo?.(el, currentUser, { pointsElementId: "user-points" });
 }
 
 function updateDisplayedPoints(newTotal) {

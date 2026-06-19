@@ -29,19 +29,7 @@ function communitySafeCssColor(value) {
 function renderCommunityHeaderUser() {
     const el = document.getElementById("user-info");
     if (!el || !communityViewer) return;
-    const displayName = communityViewer.display_name || communityViewer.email.split("@")[0];
-    const avatarSrc = communitySafeImageSrc(communityViewer.avatar_url);
-    const avatarHtml = avatarSrc
-        ? `<img src="${avatarSrc}" alt="" class="h-5 w-5 rounded-full border border-sky-300 object-cover flex-shrink-0">`
-        : `<span class="flex h-5 w-5 items-center justify-center rounded-full border border-sky-300 text-[9px] font-black text-white flex-shrink-0" style="background:${communitySafeCssColor(communityViewer.avatar_color)}">${communityEscapeHtml(communityViewer.initials || "??")}</span>`;
-    el.title = communityViewer.email;
-    el.innerHTML = `
-        <span class="inline-flex max-w-full items-center gap-2">
-            ${avatarHtml}
-            <span class="max-w-[8rem] truncate font-semibold text-slate-900">${communityEscapeHtml(displayName)}</span>
-            <span class="text-slate-300">|</span>
-            <span class="font-bold text-[#D3af37]">${Number(communityViewer.total_points || 0).toLocaleString()}</span><span class="text-[#D3af37]">d</span>
-        </span>`;
+    window.UserShell?.renderUserInfo?.(el, communityViewer);
 }
 
 function renderCommunityState() {

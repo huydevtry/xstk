@@ -104,10 +104,11 @@
                         <button id="user-info" type="button" data-user-menu-trigger aria-haspopup="menu" aria-expanded="false" class="admin-user-pill w-full rounded-2xl border border-slate-800 bg-slate-900/90 px-3 py-3 text-left text-xs text-slate-300 transition hover:border-slate-700">
                             Đang tải tài khoản...
                         </button>
-                        <div data-user-menu-panel class="hidden absolute right-0 top-full z-50 mt-2 w-52 rounded-2xl border border-slate-800 bg-slate-950 p-2 shadow-2xl">
-                            <a href="/profile" class="block rounded-xl px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-900">Xem trang cá nhân</a>
+                        <div data-user-menu-panel class="user-menu-panel hidden absolute right-0 top-full z-50 mt-2 w-56 rounded-[1.4rem] p-2.5 shadow-2xl">
+                            <a href="/profile" class="user-menu-item block rounded-2xl px-3 py-2.5 text-sm font-semibold text-slate-700 transition">Xem trang cá nhân</a>
+                            <a href="/admin" class="user-menu-item mt-2 block rounded-2xl px-3 py-2.5 text-sm font-semibold text-sky-800 transition">Trang admin</a>
                             {% if logout_url %}
-                            <a href="{{ logout_url }}" class="mt-1 block rounded-xl px-3 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/10">Đăng xuất</a>
+                            <a href="{{ logout_url }}" class="user-menu-item user-menu-item-danger mt-2 block rounded-2xl px-3 py-2.5 text-sm font-semibold transition">Đăng xuất</a>
                             {% endif %}
                         </div>
                     </div>

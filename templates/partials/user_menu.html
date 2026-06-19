@@ -1,0 +1,14 @@
+<div class="relative max-w-full" data-user-menu>
+    <button id="user-info" type="button" data-user-menu-trigger aria-haspopup="menu" aria-expanded="false" class="{{ user_info_button_class }}">
+        Đang tải dữ liệu...
+    </button>
+    <div data-user-menu-panel class="{{ user_menu_panel_class }}">
+        <a href="/profile" class="user-menu-item block rounded-2xl px-3 py-2.5 text-sm font-semibold text-slate-700 transition">Xem trang cá nhân</a>
+        {% if viewer_is_admin %}
+        <a href="/admin" class="user-menu-item mt-2 block rounded-2xl px-3 py-2.5 text-sm font-semibold text-sky-800 transition">Trang admin</a>
+        {% endif %}
+        {% if logout_url %}
+        <a href="{{ logout_url }}" class="user-menu-item user-menu-item-danger mt-2 block rounded-2xl px-3 py-2.5 text-sm font-semibold transition">Đăng xuất</a>
+        {% endif %}
+    </div>
+</div>

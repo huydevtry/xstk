@@ -1,0 +1,23 @@
+<header class="{{ header_root_class }}">
+    <div class="{{ header_row_class }}">
+        <a href="{{ header_title_href }}" class="{{ header_title_link_class }}">
+            <h1 class="{{ header_title_class }}">{{ header_title }}</h1>
+        </a>
+        {% if show_user_menu %}
+        <div class="{{ header_actions_class }}">
+            {% include "partials/user_menu.html" %}
+        </div>
+        {% elif header_action_href and header_action_label %}
+        <a href="{{ header_action_href }}" class="{{ header_action_class }}">
+            {{ header_action_label }}
+        </a>
+        {% endif %}
+    </div>
+    {% if show_ticker %}
+    <div class="ticker-wrap">
+        <div class="ticker-content" id="ticker-content">
+            <span class="text-gray-600 text-xs px-4">⚡ Đang tải hoạt động mới nhất...</span>
+        </div>
+    </div>
+    {% endif %}
+</header>

@@ -59,6 +59,7 @@ ASSET_VERSION = str(
         int(Path("static/js/profile.js").stat().st_mtime),
         int(Path("static/js/timeline.js").stat().st_mtime),
         int(Path("static/js/user-menu.js").stat().st_mtime),
+        int(Path("static/js/user-shell.js").stat().st_mtime),
     )
 )
 
@@ -103,6 +104,30 @@ def _utc_now_naive() -> datetime:
 
 def _logout_url_for_request(request: Request) -> Optional[str]:
     return LOGOUT_URL
+
+
+def _is_admin_viewer(user: Optional[User]) -> bool:
+    if user is None:
+        return False
+    return user.email.strip().lower() in ADMIN_EMAILS
+
+
+def _page_context(
+    request: Request,
+    *,
+    current_page: str,
+    viewer: Optional[User] = None,
+    **extra: object,
+) -> dict[str, object]:
+    context: dict[str, object] = {
+        "request": request,
+        "asset_version": ASSET_VERSION,
+        "logout_url": _logout_url_for_request(request),
+        "current_page": current_page,
+        "viewer_is_admin": _is_admin_viewer(viewer),
+    }
+    context.update(extra)
+    return context
 
 
 def _serialize_utc_datetime(value: Optional[datetime]) -> Optional[str]:
@@ -956,11 +981,7 @@ async def read_home(request: Request, user: Optional[User] = Depends(get_request
         return RedirectResponse(url="/guest", status_code=307)
     return templates.TemplateResponse(
         "index.html",
-        {
-            "request": request,
-            "asset_version": ASSET_VERSION,
-            "logout_url": _logout_url_for_request(request),
-        },
+        _page_context(request, current_page="home", viewer=user),
         headers=NO_CACHE_HEADERS,
     )
 
@@ -987,11 +1008,11 @@ async def read_guide(request: Request):
     guide_markdown = guide_path.read_text(encoding="utf-8")
     return templates.TemplateResponse(
         "guide.html",
-        {
-            "request": request,
-            "asset_version": ASSET_VERSION,
-            "guide_html": render_markdown(guide_markdown),
-        },
+        _page_context(
+            request,
+            current_page="guide",
+            guide_html=render_markdown(guide_markdown),
+        ),
         headers=NO_CACHE_HEADERS,
     )
 
@@ -1010,13 +1031,10 @@ async def read_admin(request: Request, admin_user: User = Depends(get_admin_user
 
 @app.get("/profile", response_class=HTMLResponse)
 async def read_profile(request: Request, user: User = Depends(get_current_user)):
+    current_page = "profile_public" if request.query_params.get("user_id") else "profile"
     return templates.TemplateResponse(
         "profile.html",
-        {
-            "request": request,
-            "asset_version": ASSET_VERSION,
-            "logout_url": _logout_url_for_request(request),
-        },
+        _page_context(request, current_page=current_page, viewer=user),
         headers=NO_CACHE_HEADERS,
     )
 
@@ -1025,11 +1043,7 @@ async def read_profile(request: Request, user: User = Depends(get_current_user))
 async def read_community(request: Request, user: User = Depends(get_current_user)):
     return templates.TemplateResponse(
         "community.html",
-        {
-            "request": request,
-            "asset_version": ASSET_VERSION,
-            "logout_url": _logout_url_for_request(request),
-        },
+        _page_context(request, current_page="community", viewer=user),
         headers=NO_CACHE_HEADERS,
     )
 
