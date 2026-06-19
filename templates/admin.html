@@ -99,11 +99,13 @@
                 gap: 0.5rem;
             }
             .admin-header-top {
-                gap: 0.5rem;
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+                gap: 0.75rem;
             }
             .admin-tab-row {
-                margin-top: 0.5rem;
-                gap: 0.5rem;
+                flex: 0 0 auto;
             }
             .admin-tab-row nav {
                 display: none;
@@ -119,40 +121,40 @@
                 width: 100%;
                 justify-content: center;
             }
+            .mobile-tab-trigger {
+                min-width: 7.5rem;
+            }
         }
     </style>
 </head>
 <body class="admin-shell min-h-screen text-slate-100 antialiased pb-8">
     <header class="sticky top-0 z-50 border-b border-slate-800/80 bg-slate-950/85 backdrop-blur">
         <div class="admin-header-shell mx-auto max-w-7xl px-4 py-2.5 lg:px-6 lg:py-3">
-            <div class="admin-header-top flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                <div class="min-w-0 flex-1">
-                    <div class="flex items-center gap-3">
-                        <a href="/" class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/10 text-xs font-black text-emerald-300 lg:h-10 lg:w-10">AD</a>
-                        <div class="min-w-0">
-                            <h1 class="truncate text-base font-black text-white md:text-xl">Admin</h1>
-                        </div>
+            <div class="admin-header-top flex flex-row items-center justify-between gap-3">
+                <div class="min-w-0 flex items-center gap-3">
+                    <a href="/" class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/10 text-xs font-black text-emerald-300 lg:h-10 lg:w-10">AD</a>
+                    <div class="min-w-0">
+                        <h1 class="truncate text-base font-black text-white md:text-xl">Admin</h1>
                     </div>
                 </div>
-            </div>
-
-            <div class="admin-tab-row mt-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-                <button
-                    id="mobile-tab-trigger"
-                    type="button"
-                    class="mobile-tab-trigger inline-flex items-center justify-between rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-200 transition lg:hidden"
-                    aria-expanded="false"
-                    aria-controls="admin-tab-nav"
-                >
-                    <span id="mobile-tab-label">Tổng quan</span>
-                    <span class="text-slate-500">Menu</span>
-                </button>
-                <nav id="admin-tab-nav" class="flex flex-wrap gap-2">
-                    <button class="tab-btn active rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-300 transition" data-tab-target="overview">Tổng quan</button>
-                    <button class="tab-btn rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-300 transition" data-tab-target="users">Người dùng</button>
-                    <button class="tab-btn rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-300 transition" data-tab-target="settings">Cài đặt</button>
-                    <button class="tab-btn rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-300 transition" data-tab-target="matches">Trận đấu</button>
-                </nav>
+                <div class="admin-tab-row flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-end">
+                    <button
+                        id="mobile-tab-trigger"
+                        type="button"
+                        class="mobile-tab-trigger inline-flex items-center justify-between rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-200 transition lg:hidden"
+                        aria-expanded="false"
+                        aria-controls="admin-tab-nav"
+                    >
+                        <span id="mobile-tab-label">Tổng quan</span>
+                        <span class="text-slate-500">Menu</span>
+                    </button>
+                    <nav id="admin-tab-nav" class="flex flex-wrap gap-2">
+                        <button class="tab-btn active rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-300 transition" data-tab-target="overview">Tổng quan</button>
+                        <button class="tab-btn rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-300 transition" data-tab-target="users">Người dùng</button>
+                        <button class="tab-btn rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-300 transition" data-tab-target="settings">Cài đặt</button>
+                        <button class="tab-btn rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-300 transition" data-tab-target="matches">Trận đấu</button>
+                    </nav>
+                </div>
             </div>
         </div>
     </header>
