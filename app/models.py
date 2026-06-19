@@ -65,6 +65,9 @@ class User(Base):
     total_points = Column(Integer, default=1000)
     avatar_url = Column(String, nullable=True)
     avatar_color = Column(String, nullable=True, default=_random_avatar_color)
+    is_approved = Column(Boolean, nullable=False, default=False, index=True)
+    approved_at = Column(DateTime, nullable=True)
+    approved_by_user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=_utc_now_naive)
 
 
