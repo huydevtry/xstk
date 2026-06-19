@@ -43,19 +43,23 @@ function safeImageSrc(value) {
 }
 
 function normalizeCountryCode(value) {
-    return String(value ?? "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
+    return String(value ?? "")
+        .toUpperCase()
+        .replace(/[^A-Z0-9-]/g, "")
+        .replace(/-+/g, "-")
+        .replace(/^-+|-+$/g, "");
 }
 
 function extractCountryCode(value) {
     const src = String(value ?? "").trim();
     if (!src) return "";
-    const direct = src.match(/flagcdn\.com\/128x96\/([a-z]{2})\.png/i);
+    const direct = src.match(/flagcdn\.com\/128x96\/([a-z0-9-]+)\.png/i);
     if (direct) return direct[1].toUpperCase();
     try {
         const url = new URL(src);
         const filename = url.pathname.split("/").filter(Boolean).pop() || "";
         const code = filename.replace(/\.png$/i, "");
-        return /^[a-z]{2}$/i.test(code) ? code.toUpperCase() : "";
+        return /^[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(code) ? code.toUpperCase() : "";
     } catch {
         return "";
     }
@@ -63,7 +67,7 @@ function extractCountryCode(value) {
 
 function buildFlagUrl(countryCode) {
     const code = normalizeCountryCode(countryCode).toLowerCase();
-    return code.length === 2 ? `${FLAG_CDN_PREFIX}${code}.png` : "";
+    return code ? `${FLAG_CDN_PREFIX}${code}.png` : "";
 }
 
 function safeCssColor(value) {
