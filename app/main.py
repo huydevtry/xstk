@@ -24,6 +24,7 @@ import io
 from decimal import Decimal, ROUND_DOWN
 import html
 import re
+import json
 
 from app.database import engine, Base, get_db
 from app.models import (
@@ -96,6 +97,12 @@ MAX_POINT_TRANSACTION_PAGE_SIZE = 50
 POINT_TRANSACTIONS_BACKFILL_KEY = "point_transactions_backfill_version"
 POINT_TRANSACTIONS_BACKFILL_VERSION = "admin_seed_v2"
 LOGOUT_URL = "https://learning.huydevtry.com/cdn-cgi/access/logout"
+COUNTRY_CODE_PATH = Path("data/country_code.json")
+COUNTRY_CODE_MAP: dict[str, str] = json.loads(COUNTRY_CODE_PATH.read_text(encoding="utf-8"))
+COUNTRY_CODE_OPTIONS = [
+    {"code": code.upper(), "name": name}
+    for code, name in COUNTRY_CODE_MAP.items()
+]
 
 
 def _utc_now_naive() -> datetime:
@@ -1024,6 +1031,7 @@ async def read_admin(request: Request, admin_user: User = Depends(get_admin_user
             "request": request,
             "asset_version": ASSET_VERSION,
             "logout_url": _logout_url_for_request(request),
+            "country_code_options_json": json.dumps(COUNTRY_CODE_OPTIONS, ensure_ascii=False),
         },
         headers=NO_CACHE_HEADERS,
     )

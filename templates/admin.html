@@ -265,11 +265,11 @@
                             <input id="away-team" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" placeholder="Đội khách" required maxlength="80">
                             <input id="handicap" type="number" step="0.25" value="0" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500" placeholder="Kèo chấp">
                             <div class="space-y-2">
-                                <input id="home-country-code" maxlength="16" inputmode="latin" autocomplete="off" class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm uppercase tracking-[0.2em] text-white outline-none transition focus:border-emerald-500" placeholder="Mã quốc gia đội nhà, ví dụ: gb-sct">
+                                <input id="home-country-code" list="country-code-options" maxlength="16" inputmode="latin" autocomplete="off" class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm uppercase tracking-[0.2em] text-white outline-none transition focus:border-emerald-500" placeholder="Mã quốc gia đội nhà, ví dụ: gb-sct">
                                 <p id="home-flag-preview" class="text-xs text-slate-400">Flag URL sẽ tự sinh tại đây.</p>
                             </div>
                             <div class="space-y-2">
-                                <input id="away-country-code" maxlength="16" inputmode="latin" autocomplete="off" class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm uppercase tracking-[0.2em] text-white outline-none transition focus:border-emerald-500" placeholder="Mã quốc gia đội khách, ví dụ: gb-sct">
+                                <input id="away-country-code" list="country-code-options" maxlength="16" inputmode="latin" autocomplete="off" class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm uppercase tracking-[0.2em] text-white outline-none transition focus:border-emerald-500" placeholder="Mã quốc gia đội khách, ví dụ: gb-sct">
                                 <p id="away-flag-preview" class="text-xs text-slate-400">Flag URL sẽ tự sinh tại đây.</p>
                             </div>
                             <select id="status" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500">
@@ -307,6 +307,8 @@
         </section>
     </main>
 
+    <datalist id="country-code-options"></datalist>
+    <script id="country-code-options-data" type="application/json">{{ country_code_options_json | safe }}</script>
     <script src="/static/js/user-menu.js?v={{ asset_version }}"></script>
     <script src="/static/js/admin.js?v={{ asset_version }}"></script>
 </body>

@@ -11,6 +11,8 @@ const state = {
     userSearch: "",
     activeTab: "overview",
     toastTimer: null,
+    countryCodeOptions: [],
+    countryCodeLookup: {},
 };
 
 const MATCH_DEFAULT_DURATION_MINUTES = 120;
@@ -18,6 +20,8 @@ const FLAG_CDN_PREFIX = "https://flagcdn.com/128x96/";
 const APP_TIME_ZONE = "Asia/Ho_Chi_Minh";
 
 document.addEventListener("DOMContentLoaded", () => {
+    loadCountryCodeOptions();
+    renderCountryCodeDatalist();
     bindTabs();
     bindActions();
     bindMatchFormControls();
@@ -48,6 +52,41 @@ function normalizeCountryCode(value) {
         .replace(/[^A-Z0-9-]/g, "")
         .replace(/-+/g, "-")
         .replace(/^-+|-+$/g, "");
+}
+
+function normalizeCountryName(value) {
+    return String(value ?? "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+}
+
+function loadCountryCodeOptions() {
+    const source = document.getElementById("country-code-options-data");
+    if (!source) return;
+    try {
+        const parsed = JSON.parse(source.textContent || "[]");
+        state.countryCodeOptions = Array.isArray(parsed) ? parsed : [];
+        state.countryCodeLookup = state.countryCodeOptions.reduce((acc, item) => {
+            const code = normalizeCountryCode(item?.code || "");
+            const name = String(item?.name || "").trim();
+            if (code && name) acc[code] = name;
+            return acc;
+        }, {});
+    } catch {
+        state.countryCodeOptions = [];
+        state.countryCodeLookup = {};
+    }
+}
+
+function renderCountryCodeDatalist() {
+    const datalist = document.getElementById("country-code-options");
+    if (!datalist) return;
+    datalist.innerHTML = state.countryCodeOptions.map(item => `
+        <option value="${escapeHtml(normalizeCountryCode(item.code))}">${escapeHtml(item.name)}</option>
+    `).join("");
 }
 
 function extractCountryCode(value) {
@@ -147,6 +186,12 @@ function localDateValue(value) {
 function localTimeValue(value) {
     const parts = getVNDateParts(value);
     return parts ? `${parts.hour}:${parts.minute}` : "";
+}
+
+function todayDateValue() {
+    const now = new Date();
+    const parts = getVNDateParts(now.toISOString());
+    return parts ? `${parts.year}-${parts.month}-${parts.day}` : "";
 }
 
 function localDateTimeValueFromParts(dateValue, timeValue, addMinutes = 0) {
@@ -269,6 +314,11 @@ function openMatchComposer(mode = "create") {
     if (mode === "create") {
         document.getElementById("match-form-title").textContent = "Thêm trận đấu";
         document.getElementById("save-match-btn").textContent = "Lưu trận";
+        const startDateInput = document.getElementById("start-date");
+        if (startDateInput && !startDateInput.value) {
+            startDateInput.value = todayDateValue();
+            syncMatchEndTime();
+        }
     }
 }
 
@@ -294,6 +344,18 @@ function bindMatchFormControls() {
         updateFlagPreview(previewId, input.value);
     });
 
+    [
+        ["home-team", "home-country-code", "home-flag-preview"],
+        ["away-team", "away-country-code", "away-flag-preview"],
+    ].forEach(([teamInputId, countryInputId, previewId]) => {
+        const teamInput = document.getElementById(teamInputId);
+        const countryInput = document.getElementById(countryInputId);
+        if (!teamInput || !countryInput) return;
+        const suggest = () => suggestCountryCodeFromTeam(teamInput, countryInput, previewId);
+        teamInput.addEventListener("blur", suggest);
+        teamInput.addEventListener("change", suggest);
+    });
+
     ["start-date", "start-time"].forEach(inputId => {
         document.getElementById(inputId)?.addEventListener("input", syncMatchEndTime);
         document.getElementById(inputId)?.addEventListener("change", syncMatchEndTime);
@@ -305,9 +367,43 @@ function updateFlagPreview(previewId, countryCode) {
     if (!preview) return;
     const code = normalizeCountryCode(countryCode);
     const url = buildFlagUrl(code);
+    const countryName = state.countryCodeLookup[code] || "";
     preview.innerHTML = url
-        ? `URL: <span class="break-all font-medium text-slate-200">${escapeHtml(url)}</span>`
+        ? `${countryName ? `Quốc gia: <span class="font-medium text-emerald-300">${escapeHtml(countryName)}</span><br>` : ""}URL: <span class="break-all font-medium text-slate-200">${escapeHtml(url)}</span>`
         : "Flag URL sẽ tự sinh tại đây.";
+}
+
+function suggestCountryCodeFromTeam(teamInput, countryInput, previewId) {
+    const teamName = String(teamInput.value || "").trim();
+    const existingCode = normalizeCountryCode(countryInput.value);
+    if (!teamName || existingCode) return;
+    const match = findCountryCodeByTeamName(teamName);
+    if (!match) return;
+    countryInput.value = match.code;
+    updateFlagPreview(previewId, match.code);
+}
+
+function findCountryCodeByTeamName(teamName) {
+    const normalizedTeam = normalizeCountryName(teamName);
+    if (!normalizedTeam) return null;
+
+    const exact = state.countryCodeOptions.find(item => normalizeCountryName(item.name) === normalizedTeam);
+    if (exact) {
+        return { code: normalizeCountryCode(exact.code), name: exact.name };
+    }
+
+    const contains = state.countryCodeOptions.find(item => {
+        const normalizedCountry = normalizeCountryName(item.name);
+        return normalizedCountry && (
+            normalizedCountry.includes(normalizedTeam) ||
+            normalizedTeam.includes(normalizedCountry)
+        );
+    });
+    if (contains) {
+        return { code: normalizeCountryCode(contains.code), name: contains.name };
+    }
+
+    return null;
 }
 
 function syncMatchEndTime() {
@@ -976,7 +1072,7 @@ function resetMatchForm() {
     document.getElementById("away-country-code").value = "";
     updateFlagPreview("home-flag-preview", "");
     updateFlagPreview("away-flag-preview", "");
-    document.getElementById("start-date").value = "";
+    document.getElementById("start-date").value = todayDateValue();
     document.getElementById("start-time").value = "";
     document.getElementById("end-time").value = "";
     document.getElementById("match-form-title").textContent = "Thêm trận đấu";
