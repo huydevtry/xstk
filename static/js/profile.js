@@ -268,6 +268,15 @@ function closePointHistorySheet() {
     document.body.style.overflow = "";
 }
 
+function focusComposer() {
+    const composer = document.getElementById("profile-composer-section");
+    const input = document.getElementById("default-taunt-input");
+    if (!composer || !input) return;
+    composer.classList.remove("hidden");
+    composer.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => input.focus(), 220);
+}
+
 function historyBadgeHtml(bet) {
     const isFinished = String(bet.match_status || "").toLowerCase() === "finished";
     const isWin = isFinished && Number(bet.points_earned || 0) > 0;
@@ -545,7 +554,7 @@ function initHistorySheet() {
             selectedReactionBet = profileBets.find(bet => Number(bet.bet_id) === betId) || null;
             syncSelectedMatchContext();
             closeHistorySheet();
-            document.getElementById("default-taunt-input")?.focus();
+            focusComposer();
         }
     });
     document.getElementById("point-history-list")?.addEventListener("click", event => {

@@ -27,6 +27,7 @@ def _split_emails(value) -> set[str]:
 
 LOCAL_DEV_AUTH = _env_flag("LOCAL_DEV_AUTH")
 LOCAL_DEV_EMAIL = os.getenv("LOCAL_DEV_EMAIL", "dev_local_test@domain.com").strip().lower()
+# LOCAL_DEV_EMAIL = "demo_user_09@seed.local"
 
 
 def _load_admin_emails() -> set[str]:

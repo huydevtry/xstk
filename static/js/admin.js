@@ -22,6 +22,7 @@ const APP_TIME_ZONE = "Asia/Ho_Chi_Minh";
 document.addEventListener("DOMContentLoaded", () => {
     loadCountryCodeOptions();
     renderCountryCodeDatalist();
+    renderCountryNameDatalist();
     bindTabs();
     bindActions();
     bindMatchFormControls();
@@ -86,6 +87,14 @@ function renderCountryCodeDatalist() {
     if (!datalist) return;
     datalist.innerHTML = state.countryCodeOptions.map(item => `
         <option value="${escapeHtml(normalizeCountryCode(item.code))}">${escapeHtml(item.name)}</option>
+    `).join("");
+}
+
+function renderCountryNameDatalist() {
+    const datalist = document.getElementById("country-name-options");
+    if (!datalist) return;
+    datalist.innerHTML = state.countryCodeOptions.map(item => `
+        <option value="${escapeHtml(item.name)}">${escapeHtml(normalizeCountryCode(item.code))}</option>
     `).join("");
 }
 
@@ -336,6 +345,7 @@ function bindMatchFormControls() {
         if (!input) return;
         const previewId = inputId === "home-country-code" ? "home-flag-preview" : "away-flag-preview";
         const handleInput = () => {
+            delete input.dataset.autoCountryCode;
             input.value = normalizeCountryCode(input.value);
             updateFlagPreview(previewId, input.value);
         };
@@ -352,6 +362,7 @@ function bindMatchFormControls() {
         const countryInput = document.getElementById(countryInputId);
         if (!teamInput || !countryInput) return;
         const suggest = () => suggestCountryCodeFromTeam(teamInput, countryInput, previewId);
+        teamInput.addEventListener("input", suggest);
         teamInput.addEventListener("blur", suggest);
         teamInput.addEventListener("change", suggest);
     });
@@ -376,10 +387,20 @@ function updateFlagPreview(previewId, countryCode) {
 function suggestCountryCodeFromTeam(teamInput, countryInput, previewId) {
     const teamName = String(teamInput.value || "").trim();
     const existingCode = normalizeCountryCode(countryInput.value);
-    if (!teamName || existingCode) return;
+    const previousAutoCode = normalizeCountryCode(countryInput.dataset.autoCountryCode || "");
+    if (!teamName) {
+        if (previousAutoCode && existingCode === previousAutoCode) {
+            countryInput.value = "";
+            delete countryInput.dataset.autoCountryCode;
+            updateFlagPreview(previewId, "");
+        }
+        return;
+    }
     const match = findCountryCodeByTeamName(teamName);
     if (!match) return;
+    if (existingCode && existingCode !== previousAutoCode) return;
     countryInput.value = match.code;
+    countryInput.dataset.autoCountryCode = match.code;
     updateFlagPreview(previewId, match.code);
 }
 
@@ -1049,6 +1070,8 @@ function editMatch(matchId) {
     document.getElementById("away-team").value = match.away_team || "";
     document.getElementById("home-country-code").value = extractCountryCode(match.home_icon);
     document.getElementById("away-country-code").value = extractCountryCode(match.away_icon);
+    delete document.getElementById("home-country-code").dataset.autoCountryCode;
+    delete document.getElementById("away-country-code").dataset.autoCountryCode;
     updateFlagPreview("home-flag-preview", document.getElementById("home-country-code").value);
     updateFlagPreview("away-flag-preview", document.getElementById("away-country-code").value);
     document.getElementById("handicap").value = Number(match.handicap || 0);
@@ -1070,6 +1093,8 @@ function resetMatchForm() {
     document.getElementById("status").value = "upcoming";
     document.getElementById("home-country-code").value = "";
     document.getElementById("away-country-code").value = "";
+    delete document.getElementById("home-country-code").dataset.autoCountryCode;
+    delete document.getElementById("away-country-code").dataset.autoCountryCode;
     updateFlagPreview("home-flag-preview", "");
     updateFlagPreview("away-flag-preview", "");
     document.getElementById("start-date").value = todayDateValue();
