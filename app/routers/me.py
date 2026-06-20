@@ -5,7 +5,6 @@ from app.schemas.payloads import (
     AdminUserPointsPayload,
     BetPayload,
     MatchPayload,
-    PointRechargePayload,
     ProfileStatusPostPayload,
     ResolvePayload,
     UpdateProfilePayload,
@@ -71,7 +70,6 @@ from app.services.shared import (
     _match_effective_end_time,
     _get_match_min_stake,
     _sync_match_statuses,
-    _match_status_sync_loop,
     _get_user_by_id,
     AVATARS_DIR,
     AVATAR_CONTENT_TYPES,
@@ -90,17 +88,11 @@ from app.services.shared import (
     _serialize_bet_history_entry,
     _user_badge_payload,
     _build_user_badge_for_profile,
-    _recharge_request_response,
     _stable_pick,
     _format_reward_label,
     _build_detail_quote,
     _build_headline_quote,
     _build_match_detail_payload,
-    _clean_csv_value,
-    _csv_field_provided,
-    _parse_csv_datetime,
-    _parse_optional_int,
-    _parse_optional_float,
     _build_profile_payload,
     Depends,
     HTTPException,
@@ -128,17 +120,13 @@ from app.services.shared import (
     hashlib,
     random,
     uuid_lib,
-    asyncio,
     UUID,
     Path,
-    csv,
-    io,
     Decimal,
     ROUND_DOWN,
     html,
     re,
     json,
-    engine,
     Base,
     get_db,
     Match,
@@ -146,16 +134,13 @@ from app.services.shared import (
     Bet,
     User,
     ProfileStatusPost,
-    PointRechargeRequest,
-    PointRechargeStatus,
     PointTransaction,
     PointTransactionType,
     AppSetting,
     get_current_user,
     get_admin_user,
     get_request_user,
-    ADMIN_EMAILS,
-    notify_admin_recharge_request
+    ADMIN_EMAILS
 )
 
 router = APIRouter()
@@ -373,44 +358,3 @@ async def get_my_bets(user: User = Depends(get_current_user), db: AsyncSession =
         )
         for row in rows
     ]
-
-@router.get("/api/v1/me/recharge-requests")
-async def get_my_recharge_requests(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    rows = (
-        await db.execute(
-            select(PointRechargeRequest)
-            .where(PointRechargeRequest.user_id == user.id)
-            .order_by(PointRechargeRequest.created_at.desc())
-        )
-    ).scalars().all()
-    return [_recharge_request_response(row) for row in rows]
-
-@router.post("/api/v1/me/recharge-requests", status_code=201)
-async def create_recharge_request(
-    payload: PointRechargePayload,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    feature_settings = await _get_feature_settings(db)
-    if not feature_settings.get("points_enabled", True):
-        raise HTTPException(status_code=403, detail="Tính năng nạp điểm đang tạm tắt.")
-
-    request = PointRechargeRequest(
-        user_id=user.id,
-        amount=payload.amount,
-        status=PointRechargeStatus.pending,
-    )
-    try:
-        db.add(request)
-        await db.commit()
-        await db.refresh(request)
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-
-    asyncio.create_task(notify_admin_recharge_request(request.id, user, request.amount))
-    return {
-        "message": "Yêu cầu nạp điểm đã được gửi và đang chờ admin xác nhận.",
-        "request": _recharge_request_response(request),
-    }
-

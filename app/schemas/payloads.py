@@ -26,9 +26,6 @@ class MatchPayload(BaseModel):
     start_time: datetime
     end_time: Optional[datetime] = None
 
-class PointRechargePayload(BaseModel):
-    amount: int = Field(..., ge=10, le=10000)
-
 class AdminSettingsPayload(BaseModel):
     points_enabled: bool
     homepage_announcement: str = Field(default="", max_length=MAX_HOMEPAGE_ANNOUNCEMENT_LENGTH)
@@ -45,4 +42,3 @@ class UpdateProfilePayload(BaseModel):
 class ProfileStatusPostPayload(BaseModel):
     content: str = Field(..., max_length=MAX_PROFILE_STATUS_LENGTH)
     match_id: Optional[int] = None
-

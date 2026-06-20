@@ -5,7 +5,6 @@ from app.schemas.payloads import (
     AdminUserPointsPayload,
     BetPayload,
     MatchPayload,
-    PointRechargePayload,
     ProfileStatusPostPayload,
     ResolvePayload,
     UpdateProfilePayload,
@@ -71,7 +70,6 @@ from app.services.shared import (
     _match_effective_end_time,
     _get_match_min_stake,
     _sync_match_statuses,
-    _match_status_sync_loop,
     _get_user_by_id,
     AVATARS_DIR,
     AVATAR_CONTENT_TYPES,
@@ -90,17 +88,11 @@ from app.services.shared import (
     _serialize_bet_history_entry,
     _user_badge_payload,
     _build_user_badge_for_profile,
-    _recharge_request_response,
     _stable_pick,
     _format_reward_label,
     _build_detail_quote,
     _build_headline_quote,
     _build_match_detail_payload,
-    _clean_csv_value,
-    _csv_field_provided,
-    _parse_csv_datetime,
-    _parse_optional_int,
-    _parse_optional_float,
     _build_profile_payload,
     Depends,
     HTTPException,
@@ -128,17 +120,13 @@ from app.services.shared import (
     hashlib,
     random,
     uuid_lib,
-    asyncio,
     UUID,
     Path,
-    csv,
-    io,
     Decimal,
     ROUND_DOWN,
     html,
     re,
     json,
-    engine,
     Base,
     get_db,
     Match,
@@ -146,16 +134,13 @@ from app.services.shared import (
     Bet,
     User,
     ProfileStatusPost,
-    PointRechargeRequest,
-    PointRechargeStatus,
     PointTransaction,
     PointTransactionType,
     AppSetting,
     get_current_user,
     get_admin_user,
     get_request_user,
-    ADMIN_EMAILS,
-    notify_admin_recharge_request
+    ADMIN_EMAILS
 )
 
 router = APIRouter()
@@ -365,90 +350,6 @@ async def get_all_matches(admin_user: User = Depends(get_admin_user), db: AsyncS
     rows = (await db.execute(query)).scalars().all()
     return [_match_response(r) for r in rows]
 
-@router.get("/api/v1/admin/recharge-requests")
-async def get_recharge_requests(admin_user: User = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
-    rows = (
-        await db.execute(
-            select(PointRechargeRequest, User)
-            .join(User, PointRechargeRequest.user_id == User.id)
-            .order_by(
-                case((PointRechargeRequest.status == PointRechargeStatus.pending, 0), else_=1),
-                PointRechargeRequest.created_at.desc(),
-            )
-        )
-    ).all()
-    return [_recharge_request_response(request, user) for request, user in rows]
-
-@router.post("/api/v1/admin/recharge-requests/{request_id}/approve")
-async def approve_recharge_request(
-    request_id: int,
-    admin_user: User = Depends(get_admin_user),
-    db: AsyncSession = Depends(get_db),
-):
-    request = (
-        await db.execute(select(PointRechargeRequest).where(PointRechargeRequest.id == request_id))
-    ).scalars().first()
-    if not request:
-        raise HTTPException(status_code=404, detail="Yêu cầu nạp điểm không tồn tại.")
-    if request.status != PointRechargeStatus.pending:
-        raise HTTPException(status_code=409, detail="Yêu cầu này đã được xử lý.")
-
-    try:
-        approved_at = _local_now_naive()
-        status_update = await db.execute(
-            update(PointRechargeRequest)
-            .where(
-                PointRechargeRequest.id == request_id,
-                PointRechargeRequest.status == PointRechargeStatus.pending,
-            )
-            .values(
-                status=PointRechargeStatus.approved,
-                approved_at=approved_at,
-                approved_by_user_id=admin_user.id,
-            )
-            .execution_options(synchronize_session=False)
-        )
-        if status_update.rowcount != 1:
-            await db.rollback()
-            raise HTTPException(status_code=409, detail="Yêu cầu này đã được xử lý.")
-
-        await db.execute(
-            update(User)
-            .where(User.id == request.user_id)
-            .values(total_points=User.total_points + request.amount)
-            .execution_options(synchronize_session=False)
-        )
-        user = (
-            await db.execute(select(User).where(User.id == request.user_id))
-        ).scalars().first()
-        if user:
-            await _record_point_transaction(
-                db,
-                user=user,
-                delta_points=request.amount,
-                transaction_type=PointTransactionType.recharge_approved,
-                description=f"Admin duyệt nạp điểm #{request.id}",
-                actor=admin_user,
-                recharge_request=request,
-            )
-        await db.commit()
-        await db.refresh(request)
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-
-    user = (
-        await db.execute(select(User).where(User.id == request.user_id))
-    ).scalars().first()
-    if user:
-        await db.refresh(user)
-    return {
-        "message": "Đã xác nhận và cộng điểm cho user.",
-        "request": _recharge_request_response(request, user, admin_user),
-    }
-
 @router.post("/api/v1/admin/matches", status_code=201)
 async def create_match(
     payload: MatchPayload,
@@ -480,170 +381,6 @@ async def create_match(
         raise HTTPException(status_code=500, detail=str(e))
 
     return {"message": "Đã thêm trận đấu.", "match": _match_response(match)}
-
-@router.post("/api/v1/admin/matches/import-csv")
-async def import_matches_csv(
-    file: UploadFile = File(...),
-    admin_user: User = Depends(get_admin_user),
-    db: AsyncSession = Depends(get_db),
-):
-    filename = (file.filename or "").lower()
-    if not filename.endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Chỉ chấp nhận file CSV.")
-
-    contents = await file.read()
-    if len(contents) > 2 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File CSV tối đa 2MB.")
-
-    try:
-        text = contents.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="File CSV cần dùng mã hóa UTF-8.")
-
-    reader = csv.DictReader(io.StringIO(text))
-    if not reader.fieldnames:
-        raise HTTPException(status_code=400, detail="File CSV không có header.")
-
-    imported = 0
-    created = 0
-    updated = 0
-    errors = []
-
-    try:
-        fieldnames = set(reader.fieldnames or [])
-        for line_no, row in enumerate(reader, start=2):
-            if not any(str(v or "").strip() for v in row.values()):
-                continue
-
-            try:
-                raw_id = _clean_csv_value(row, "id")
-                match = None
-                if raw_id:
-                    match = (
-                        await db.execute(select(Match).where(Match.id == int(raw_id)))
-                    ).scalars().first()
-
-                home_team_provided = _csv_field_provided(row, "home_team")
-                away_team_provided = _csv_field_provided(row, "away_team")
-                home_team = _clean_csv_value(row, "home_team") if home_team_provided else (match.home_team if match else "")
-                away_team = _clean_csv_value(row, "away_team") if away_team_provided else (match.away_team if match else "")
-                if not home_team or not away_team:
-                    raise ValueError("home_team and away_team are required")
-
-                status_provided = _csv_field_provided(row, "status")
-                status_value = (
-                    _clean_csv_value(row, "status")
-                    if status_provided
-                    else (match.status.value if match else MatchStatus.upcoming.value)
-                ) or MatchStatus.upcoming.value
-                status = MatchStatus(status_value)
-                if status == MatchStatus.finished:
-                    raise ValueError("Use resolve match flow instead of importing finished status")
-
-                start_time_raw = _clean_csv_value(row, "start_time") or _clean_csv_value(row, "start_time_ict")
-                if start_time_raw:
-                    start_time = _parse_csv_datetime(start_time_raw)
-                elif match:
-                    start_time = match.start_time
-                else:
-                    raise ValueError("start_time is required")
-
-                end_time_provided = _csv_field_provided(row, "end_time")
-                end_time_value = _clean_csv_value(row, "end_time")
-                if end_time_provided:
-                    end_time = _parse_csv_datetime(end_time_value)
-                elif match and match.end_time:
-                    end_time = match.end_time
-                else:
-                    end_time = start_time + MATCH_DEFAULT_DURATION
-                if end_time <= start_time:
-                    raise ValueError("end_time must be after start_time")
-
-                home_score = (
-                    _parse_optional_int(_clean_csv_value(row, "home_score"), 0)
-                    if _csv_field_provided(row, "home_score")
-                    else (match.home_score if match else 0)
-                )
-                away_score = (
-                    _parse_optional_int(_clean_csv_value(row, "away_score"), 0)
-                    if _csv_field_provided(row, "away_score")
-                    else (match.away_score if match else 0)
-                )
-                handicap = (
-                    _parse_optional_float(_clean_csv_value(row, "handicap"), 0.0)
-                    if _csv_field_provided(row, "handicap")
-                    else (match.handicap if match else 0.0)
-                )
-                home_icon = (
-                    _clean_csv_value(row, "home_icon") or None
-                    if "home_icon" in fieldnames and row.get("home_icon") is not None
-                    else (match.home_icon if match else None)
-                )
-                away_icon = (
-                    _clean_csv_value(row, "away_icon") or None
-                    if "away_icon" in fieldnames and row.get("away_icon") is not None
-                    else (match.away_icon if match else None)
-                )
-
-                if match:
-                    match.home_team = home_team
-                    match.away_team = away_team
-                    match.home_icon = home_icon
-                    match.away_icon = away_icon
-                    match.home_score = home_score
-                    match.away_score = away_score
-                    match.handicap = handicap
-                    match.status = status
-                    match.start_time = start_time
-                    match.end_time = end_time
-                    updated += 1
-                else:
-                    match_kwargs = {
-                        "home_team": home_team,
-                        "away_team": away_team,
-                        "home_icon": home_icon,
-                        "away_icon": away_icon,
-                        "home_score": home_score,
-                        "away_score": away_score,
-                        "handicap": handicap,
-                        "status": status,
-                        "start_time": start_time,
-                        "end_time": end_time,
-                    }
-                    if raw_id:
-                        match_kwargs["id"] = int(raw_id)
-                    match = Match(**match_kwargs)
-                    created += 1
-
-                db.add(match)
-                imported += 1
-            except Exception as e:
-                errors.append({"line": line_no, "error": str(e)})
-                if len(errors) >= 10:
-                    break
-
-        if errors:
-            await db.rollback()
-            return {
-                "message": "Import thất bại. Chưa có trận nào được lưu.",
-                "imported": 0,
-                "created": 0,
-                "updated": 0,
-                "errors": errors,
-            }
-
-        await db.commit()
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-
-    return {
-        "message": f"Đã import {imported} trận đấu.",
-        "imported": imported,
-        "created": created,
-        "updated": updated,
-        "errors": [],
-    }
 
 @router.post("/api/v1/admin/matches/{match_id}/update")
 async def update_match(
@@ -830,4 +567,3 @@ async def resolve_match(
         "total_pool": total_pool,
         "refunded": refunded,
     }
-

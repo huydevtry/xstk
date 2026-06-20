@@ -84,7 +84,7 @@
         if (result.outcome === "win") {
             return `
                 <div class="mt-3 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
-                    ✅ ${escapeHtml(result.outcome_label || "Thắng")} +${escapeHtml(formatCoins(result.points_earned || 0))}
+                    ✅ ${escapeHtml(result.outcome_label || "Thắng")}
                 </div>
             `;
         }

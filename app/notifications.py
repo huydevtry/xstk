@@ -68,23 +68,6 @@ def _safe_user_label(user: User) -> str:
     return html.escape(user.email)
 
 
-async def notify_admin_recharge_request(request_id: int, user: User, amount: int) -> None:
-    bot_token, admin_chat_id, _ = _notification_env()
-    if not bot_token or not admin_chat_id:
-        return
-    text = (
-        "Yêu cầu nạp điểm mới\n"
-        f"Mã yêu cầu: #{request_id}\n"
-        f"User: {_safe_user_label(user)}\n"
-        f"Số điểm: {amount:,}\n"
-        f"Trang admin: {_admin_url()}"
-    )
-    try:
-        await asyncio.to_thread(_send_telegram_message_sync, text)
-    except Exception:
-        logger.exception("Failed to send Telegram recharge notification.")
-
-
 async def notify_admin_new_user_pending(user: User) -> None:
     bot_token, admin_chat_id, _ = _notification_env()
     if not bot_token or not admin_chat_id:

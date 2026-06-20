@@ -15,31 +15,25 @@ import logging
 import hashlib
 import random
 import uuid as uuid_lib
-import asyncio
 from uuid import UUID
 from pathlib import Path
-import csv
-import io
 from decimal import Decimal, ROUND_DOWN
 import html
 import re
 import json
 
-from app.database import engine, Base, get_db
+from app.database import Base, get_db
 from app.models import (
     Match,
     MatchStatus,
     Bet,
     User,
     ProfileStatusPost,
-    PointRechargeRequest,
-    PointRechargeStatus,
     PointTransaction,
     PointTransactionType,
     AppSetting,
 )
 from app.dependencies import get_current_user, get_admin_user, get_request_user, ADMIN_EMAILS
-from app.notifications import notify_admin_recharge_request
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +99,7 @@ MAX_POINT_TRANSACTION_PAGE_SIZE = 50
 
 POINT_TRANSACTIONS_BACKFILL_KEY = "point_transactions_backfill_version"
 
-POINT_TRANSACTIONS_BACKFILL_VERSION = "admin_seed_v2"
+POINT_TRANSACTIONS_BACKFILL_VERSION = "admin_seed_v3_no_recharge"
 
 LOGOUT_URL = "https://learning.huydevtry.com/cdn-cgi/access/logout"
 
@@ -556,14 +550,6 @@ async def _backfill_point_transactions(db: AsyncSession) -> None:
             select(Bet).order_by(Bet.created_at.asc(), Bet.id.asc())
         )
     ).scalars().all()
-    approved_recharges = (
-        await db.execute(
-            select(PointRechargeRequest)
-            .where(PointRechargeRequest.status == PointRechargeStatus.approved)
-            .order_by(PointRechargeRequest.approved_at.asc(), PointRechargeRequest.created_at.asc(), PointRechargeRequest.id.asc())
-        )
-    ).scalars().all()
-
     positive_payout_match_ids = {
         match_id
         for match_id, in (
@@ -583,9 +569,6 @@ async def _backfill_point_transactions(db: AsyncSession) -> None:
         ).all()
         if user_id is not None
     }
-    recharge_by_user: dict[UUID, list[PointRechargeRequest]] = {}
-    for request in approved_recharges:
-        recharge_by_user.setdefault(request.user_id, []).append(request)
     bets_by_user: dict[UUID, list[Bet]] = {}
     for bet in bets:
         bets_by_user.setdefault(bet.user_id, []).append(bet)
@@ -597,23 +580,6 @@ async def _backfill_point_transactions(db: AsyncSession) -> None:
 
         events: list[dict] = []
         delta_sum = 0
-
-        for request in recharge_by_user.get(user_id, []):
-            created_at = request.approved_at or request.created_at or user.created_at or _utc_now_naive()
-            delta = int(request.amount)
-            delta_sum += delta
-            events.append(
-                {
-                    "created_at": created_at,
-                    "delta": delta,
-                    "transaction_type": PointTransactionType.recharge_approved,
-                    "description": f"Backfill: duyệt nạp điểm cũ #{request.id}",
-                    "actor_user_id": request.approved_by_user_id,
-                    "bet_id": None,
-                    "match_id": None,
-                    "recharge_request_id": request.id,
-                }
-            )
 
         for bet in bets_by_user.get(user_id, []):
             match = matches.get(bet.match_id)
@@ -628,7 +594,6 @@ async def _backfill_point_transactions(db: AsyncSession) -> None:
                     "actor_user_id": None,
                     "bet_id": bet.id,
                     "match_id": bet.match_id,
-                    "recharge_request_id": None,
                 }
             )
 
@@ -644,7 +609,6 @@ async def _backfill_point_transactions(db: AsyncSession) -> None:
                         "actor_user_id": None,
                         "bet_id": bet.id,
                         "match_id": bet.match_id,
-                        "recharge_request_id": None,
                     }
                 )
             elif _is_refund_backfill_case(match, bet, positive_payout_match_ids):
@@ -659,11 +623,10 @@ async def _backfill_point_transactions(db: AsyncSession) -> None:
                         "actor_user_id": None,
                         "bet_id": bet.id,
                         "match_id": bet.match_id,
-                        "recharge_request_id": None,
                     }
                 )
 
-        events.sort(key=lambda item: (item["created_at"], item["delta"] > 0, item["bet_id"] or 0, item["recharge_request_id"] or 0))
+        events.sort(key=lambda item: (item["created_at"], item["delta"] > 0, item["bet_id"] or 0))
         if not events:
             continue
 
@@ -687,7 +650,6 @@ async def _backfill_point_transactions(db: AsyncSession) -> None:
                     "actor_user_id": None,
                     "bet_id": None,
                     "match_id": None,
-                    "recharge_request_id": None,
                 }
             )
 
@@ -704,7 +666,6 @@ async def _backfill_point_transactions(db: AsyncSession) -> None:
                     actor_user_id=item["actor_user_id"],
                     bet_id=item["bet_id"],
                     match_id=item["match_id"],
-                    recharge_request_id=item["recharge_request_id"],
                     is_backfilled=True,
                     created_at=item["created_at"],
                 )
@@ -759,17 +720,6 @@ async def _sync_match_statuses(db: AsyncSession) -> int:
     if changed:
         await db.commit()
     return changed
-
-async def _match_status_sync_loop() -> None:
-    while True:
-        try:
-            async with AsyncSession(engine) as session:
-                await _sync_match_statuses(session)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("Failed to sync match statuses.")
-        await asyncio.sleep(30)
 
 async def _get_user_by_id(db: AsyncSession, user_id: str) -> User:
     try:
@@ -847,7 +797,7 @@ def _point_transaction_type_label(value: PointTransactionType | str | None) -> s
         PointTransactionType.bet_stake: "Đặt cược",
         PointTransactionType.bet_reward: "Thưởng cược",
         PointTransactionType.bet_refund: "Hoàn điểm",
-        PointTransactionType.recharge_approved: "Nạp điểm",
+        PointTransactionType.recharge_approved: "Điều chỉnh lịch sử",
         PointTransactionType.admin_adjustment: "Điều chỉnh admin",
         PointTransactionType.legacy_balance_adjustment: "Điều chỉnh lịch sử",
     }
@@ -864,7 +814,6 @@ async def _record_point_transaction(
     actor: Optional[User] = None,
     bet: Optional[Bet] = None,
     match: Optional[Match] = None,
-    recharge_request: Optional[PointRechargeRequest] = None,
     is_backfilled: bool = False,
     created_at: Optional[datetime] = None,
 ) -> PointTransaction:
@@ -877,7 +826,6 @@ async def _record_point_transaction(
         actor_user_id=actor.id if actor is not None else None,
         bet_id=bet.id if bet is not None else None,
         match_id=match.id if match is not None else (bet.match_id if bet is not None else None),
-        recharge_request_id=recharge_request.id if recharge_request is not None else None,
         is_backfilled=is_backfilled,
         created_at=created_at or _utc_now_naive(),
     )
@@ -890,8 +838,10 @@ def _serialize_point_transaction(
     actor: Optional[User] = None,
     bet: Optional[Bet] = None,
     match: Optional[Match] = None,
-    recharge_request: Optional[PointRechargeRequest] = None,
 ) -> dict:
+    description = transaction.description
+    if transaction.transaction_type == PointTransactionType.recharge_approved:
+        description = "Điều chỉnh lịch sử"
     actor_payload = None
     if actor is not None:
         actor_payload = {
@@ -916,25 +866,18 @@ def _serialize_point_transaction(
             "home_icon": match.home_icon,
             "away_icon": match.away_icon,
         }
-    recharge_payload = None
-    if recharge_request is not None:
-        recharge_payload = {
-            "id": recharge_request.id,
-            "amount": recharge_request.amount,
-        }
     return {
         "id": transaction.id,
         "transaction_type": transaction.transaction_type,
         "transaction_type_label": _point_transaction_type_label(transaction.transaction_type),
         "delta_points": transaction.delta_points,
         "balance_after": transaction.balance_after,
-        "description": transaction.description,
+        "description": description,
         "created_at": _serialize_utc_datetime(transaction.created_at),
         "is_backfilled": bool(transaction.is_backfilled),
         "actor": actor_payload,
         "bet": bet_payload,
         "match": match_payload,
-        "recharge_request": recharge_payload,
     }
 
 async def _list_point_transactions(
@@ -949,11 +892,10 @@ async def _list_point_transactions(
     actor_alias = aliased(User)
     rows = (
         await db.execute(
-            select(PointTransaction, actor_alias, Bet, Match, PointRechargeRequest)
+            select(PointTransaction, actor_alias, Bet, Match)
             .outerjoin(actor_alias, PointTransaction.actor_user_id == actor_alias.id)
             .outerjoin(Bet, PointTransaction.bet_id == Bet.id)
             .outerjoin(Match, PointTransaction.match_id == Match.id)
-            .outerjoin(PointRechargeRequest, PointTransaction.recharge_request_id == PointRechargeRequest.id)
             .where(PointTransaction.user_id == user_id)
             .order_by(desc(PointTransaction.created_at), desc(PointTransaction.id))
             .offset(safe_offset)
@@ -967,7 +909,6 @@ async def _list_point_transactions(
             actor=row[1],
             bet=row.Bet,
             match=row.Match,
-            recharge_request=row.PointRechargeRequest,
         )
         for row in page_rows
     ]
@@ -1106,29 +1047,6 @@ async def _build_user_badge_for_profile(user: User, db: AsyncSession) -> Optiona
         streak_loss=streak_loss,
         is_contrarian=is_contrarian,
     )
-
-def _recharge_request_response(request: PointRechargeRequest, user: Optional[User] = None, admin: Optional[User] = None) -> dict:
-    payload = {
-        "id": request.id,
-        "amount": request.amount,
-        "status": request.status,
-        "created_at": _serialize_utc_datetime(request.created_at),
-        "approved_at": _serialize_app_datetime(request.approved_at) if request.approved_at else None,
-    }
-    if user:
-        payload["user"] = {
-            "id": str(user.id),
-            "email": user.email,
-            **_user_avatar_payload(user),
-            "total_points": user.total_points,
-        }
-    if admin:
-        payload["approved_by"] = {
-            "id": str(admin.id),
-            "email": admin.email,
-            "display_name": _user_display_name(admin),
-        }
-    return payload
 
 def _stable_pick(options, seed: str) -> str:
     if not options:
@@ -1417,40 +1335,6 @@ async def _build_match_detail_payload(
         "bettors": bettors,
         "my_bet": my_bet,
     }
-
-def _clean_csv_value(row: dict, key: str, default: str = "") -> str:
-    value = row.get(key, default)
-    if value is None:
-        return default
-    return str(value).strip()
-
-def _csv_field_provided(row: dict, key: str) -> bool:
-    return key in row and row.get(key) is not None and str(row.get(key)).strip() != ""
-
-def _parse_csv_datetime(value: str) -> datetime:
-    value = value.strip()
-    if not value:
-        raise ValueError("start_time is required")
-    try:
-        return datetime.fromisoformat(value)
-    except ValueError:
-        pass
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M"):
-        try:
-            return datetime.strptime(value, fmt)
-        except ValueError:
-            continue
-    raise ValueError("Invalid start_time format")
-
-def _parse_optional_int(value: str, default: int = 0) -> int:
-    if value == "":
-        return default
-    return int(float(value))
-
-def _parse_optional_float(value: str, default: float = 0.0) -> float:
-    if value == "":
-        return default
-    return float(value)
 
 async def _build_profile_payload(
     user: User,

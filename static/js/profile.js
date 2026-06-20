@@ -155,7 +155,7 @@ function transactionBadgeHtml(item) {
         return `<span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Admin chỉnh điểm</span>`;
     }
     if (type === "recharge_approved") {
-        return `<span class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Nạp điểm</span>`;
+        return `<span class="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">Điều chỉnh lịch sử</span>`;
     }
     if (type === "bet_reward") {
         return `<span class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Thưởng cược</span>`;

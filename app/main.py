@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.lifecycle import shutdown_event, startup_event
 from app.routers import admin, bets, community, leaderboard, matches, me, pages, settings, users
 
 
@@ -19,8 +18,6 @@ def create_app() -> FastAPI:
     app.include_router(leaderboard.router)
     app.include_router(admin.router)
 
-    app.add_event_handler("startup", startup_event)
-    app.add_event_handler("shutdown", shutdown_event)
     return app
 
 

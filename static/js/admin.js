@@ -6,7 +6,6 @@ const state = {
     },
     users: [],
     matches: [],
-    rechargeRequests: [],
     pointTransactionsByUser: {},
     userSearch: "",
     activeTab: "overview",
@@ -135,7 +134,7 @@ function pointTransactionBadge(item) {
     const type = String(item?.transaction_type || "");
     if (type === "legacy_balance_adjustment") return "border-violet-500/30 bg-violet-500/10 text-violet-200";
     if (type === "admin_adjustment") return "border-amber-500/30 bg-amber-500/10 text-amber-200";
-    if (type === "recharge_approved") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
+    if (type === "recharge_approved") return "border-violet-500/30 bg-violet-500/10 text-violet-200";
     if (type === "bet_reward") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
     if (type === "bet_refund") return "border-sky-500/30 bg-sky-500/10 text-sky-200";
     return "border-slate-700 bg-slate-900 text-slate-300";
@@ -290,7 +289,6 @@ function closeMobileTabMenu() {
 function bindActions() {
     document.getElementById("quick-refresh-users")?.addEventListener("click", () => fetchUsers(""));
     document.getElementById("refresh-users")?.addEventListener("click", () => fetchUsers(state.userSearch));
-    document.getElementById("refresh-recharge")?.addEventListener("click", fetchRechargeRequests);
     document.getElementById("save-settings")?.addEventListener("click", saveSettings);
     document.getElementById("cancel-edit-btn")?.addEventListener("click", () => {
         resetMatchForm();
@@ -837,68 +835,6 @@ async function loadMoreUserPointTransactions(userId) {
         return;
     }
     await fetchUserPointTransactions(userId, false);
-}
-
-async function fetchRechargeRequests() {
-    try {
-        state.rechargeRequests = await fetchJson("/api/v1/admin/recharge-requests");
-        renderRechargeRequests();
-    } catch (err) {
-        showToast(err.message || "Không thể tải yêu cầu nạp điểm.", "error");
-    }
-}
-
-function renderRechargeRequests() {
-    const list = document.getElementById("admin-recharge-list");
-    if (!list) return;
-
-    if (!state.rechargeRequests.length) {
-        list.innerHTML = emptyPanel("Chưa có yêu cầu nạp điểm.");
-        return;
-    }
-
-    list.innerHTML = state.rechargeRequests.map(item => {
-        const user = item.user || {};
-        const isPending = item.status === "pending";
-        return `
-            <div class="rounded-3xl border border-slate-800 bg-slate-950/50 p-4 lg:p-5">
-                <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                    <div class="min-w-0">
-                        <div class="flex flex-wrap items-center gap-2">
-                            ${renderMiniAvatar(user)}
-                            <div class="truncate font-semibold text-white">${escapeHtml(user.display_name || user.name || user.email || "User")}</div>
-                            <span class="rounded-full border px-2.5 py-1 text-xs font-semibold ${isPending ? "border-amber-500/30 bg-amber-500/10 text-amber-200" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"}">
-                                ${isPending ? "Đang chờ" : "Đã duyệt"}
-                            </span>
-                        </div>
-                        <div class="mt-2 truncate text-sm text-slate-400">${escapeHtml(user.email || "")}</div>
-                        <div class="mt-2 text-xs text-slate-500">Tạo lúc ${escapeHtml(formatDateTime(item.created_at))}</div>
-                    </div>
-                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <div class="rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-2 text-right text-lg font-black text-amber-200">
-                            ${formatCoins(item.amount)}
-                        </div>
-                        ${isPending ? `
-                            <button type="button" class="rounded-2xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400" onclick="approveRecharge(${item.id})">
-                                Duyệt
-                            </button>
-                        ` : ""}
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join("");
-}
-
-async function approveRecharge(requestId) {
-    if (!window.confirm(`Duyệt yêu cầu nạp điểm #${requestId}?`)) return;
-    try {
-        await fetchJson(`/api/v1/admin/recharge-requests/${requestId}/approve`, { method: "POST" });
-        await Promise.all([fetchRechargeRequests(), fetchUsers(state.userSearch), fetchOverview()]);
-        showToast("Đã duyệt yêu cầu nạp điểm.", "success");
-    } catch (err) {
-        showToast(err.message || "Không thể duyệt yêu cầu.", "error");
-    }
 }
 
 async function fetchMatches() {
