@@ -119,6 +119,12 @@ function initFeedMediaPicker() {
     input.addEventListener("change", () => setFeedMediaFile(input.files?.[0]));
 }
 
+function getPastedFeedMediaFile(event) {
+    const items = Array.from(event.clipboardData?.items || []);
+    const mediaItem = items.find(item => FEED_MEDIA_TYPES.has(item.type));
+    return mediaItem?.getAsFile() || null;
+}
+
 function getSelectedMatchSummary(bet) {
     return `${bet.home_team} ${Number(bet.home_score ?? 0)} - ${Number(bet.away_score ?? 0)} ${bet.away_team}`;
 }
@@ -224,6 +230,13 @@ function initCommunityComposer() {
     input.addEventListener("input", () => {
         updateComposerCount();
         setComposerStatus("");
+    });
+    input.addEventListener("paste", event => {
+        const pastedFile = getPastedFeedMediaFile(event);
+        if (!pastedFile) return;
+        event.preventDefault();
+        setFeedMediaFile(pastedFile);
+        setComposerStatus("Đã dán ảnh/GIF vào bài đăng.", "success");
     });
 
     document.getElementById("clear-selected-match")?.addEventListener("click", () => {
