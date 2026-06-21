@@ -25,6 +25,45 @@ body {
     border-radius: 999px;
 }
 
+.app-modal-overlay {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    overscroll-behavior: contain;
+}
+
+.app-modal-shell {
+    display: flex;
+    height: 100dvh;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 1rem 0.75rem calc(1rem + env(safe-area-inset-bottom));
+}
+
+.app-modal-panel {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    overflow: hidden;
+    max-height: calc(100dvh - 1rem - env(safe-area-inset-bottom));
+}
+
+.app-modal-scroll {
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+@media (min-width: 640px) {
+    .app-modal-shell {
+        padding: 2rem 1rem;
+    }
+
+    .app-modal-panel {
+        max-height: calc(100dvh - 4rem);
+    }
+}
+
 button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
 
 .user-menu-panel {
