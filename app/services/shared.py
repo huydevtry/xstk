@@ -81,6 +81,8 @@ MAX_TAUNT_LENGTH = 30
 
 MAX_PROFILE_STATUS_LENGTH = 160
 
+MAX_FEED_MEDIA_SIZE_BYTES = 8 * 1024 * 1024
+
 MAX_PROFILE_TIMELINE_ITEMS = 20
 
 DEFAULT_PROFILE_TIMELINE_PAGE_SIZE = 10
@@ -239,6 +241,17 @@ def _serialize_match_reaction_result(
         "stake": bet.stake,
     }
 
+def _serialize_profile_status_media(post: ProfileStatusPost) -> Optional[dict]:
+    media_url = getattr(post, "media_url", None)
+    media_content_type = getattr(post, "media_content_type", None)
+    if not media_url or not media_content_type:
+        return None
+    return {
+        "url": media_url,
+        "content_type": media_content_type,
+        "kind": "gif" if media_content_type == "image/gif" else "image",
+    }
+
 def _serialize_profile_status_post(
     post: ProfileStatusPost,
     *,
@@ -250,6 +263,7 @@ def _serialize_profile_status_post(
         "id": post.id,
         "post_type": (post.post_type or PROFILE_POST_TYPE_TEXT),
         "content": post.content,
+        "media": _serialize_profile_status_media(post),
         "created_at": _serialize_utc_datetime(post.created_at),
         "author": _user_avatar_payload(author) if author is not None else None,
         "match": _serialize_profile_status_match(match),
@@ -324,15 +338,20 @@ async def _create_profile_status_post(
     created_at: Optional[datetime] = None,
     post_type: str = PROFILE_POST_TYPE_TEXT,
     match: Optional[Match] = None,
+    media_url: Optional[str] = None,
+    media_content_type: Optional[str] = None,
 ) -> ProfileStatusPost:
     post = ProfileStatusPost(
         user_id=user.id,
         content=content,
         post_type=post_type,
         match_id=match.id if match is not None else None,
+        media_url=media_url,
+        media_content_type=media_content_type,
         created_at=created_at or _utc_now_naive(),
     )
-    user.profile_status = content
+    if content:
+        user.profile_status = content
     db.add(post)
     db.add(user)
     return post
@@ -734,6 +753,8 @@ async def _get_user_by_id(db: AsyncSession, user_id: str) -> User:
 
 AVATARS_DIR = Path("static/avatars")
 
+FEED_MEDIA_DIR = Path("static/feed-media")
+
 AVATAR_CONTENT_TYPES = {
     "image/jpeg": "jpg",
     "image/png": "png",
@@ -751,6 +772,30 @@ def _detect_image_content_type(contents: bytes) -> Optional[str]:
     if len(contents) >= 12 and contents[:4] == b"RIFF" and contents[8:12] == b"WEBP":
         return "image/webp"
     return None
+
+async def _save_feed_media_file(file: UploadFile) -> dict:
+    content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
+    if content_type not in AVATAR_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="Chỉ chấp nhận ảnh JPG, PNG, WebP, GIF.")
+
+    contents = await file.read()
+    if len(contents) > MAX_FEED_MEDIA_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="Ảnh/GIF quá lớn, tối đa 8MB.")
+
+    detected_type = _detect_image_content_type(contents)
+    if detected_type != content_type:
+        raise HTTPException(status_code=400, detail="Nội dung file không khớp định dạng ảnh.")
+
+    FEED_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    ext = AVATAR_CONTENT_TYPES[content_type]
+    filename = f"{uuid_lib.uuid4().hex}.{ext}"
+    dest = FEED_MEDIA_DIR / filename
+    dest.write_bytes(contents)
+
+    return {
+        "url": f"/static/feed-media/{filename}",
+        "content_type": content_type,
+    }
 
 def _match_result_published(match: Match) -> bool:
     return match.status == MatchStatus.finished and bool(getattr(match, "resolved_at", None))

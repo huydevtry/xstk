@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from pydantic import ValidationError
 
 from app.schemas.payloads import (
     AdminSettingsPayload,
@@ -74,6 +75,7 @@ from app.services.shared import (
     AVATARS_DIR,
     AVATAR_CONTENT_TYPES,
     _detect_image_content_type,
+    _save_feed_media_file,
     _match_result_published,
     _match_response,
     _choice_label,
@@ -144,6 +146,37 @@ from app.services.shared import (
 )
 
 router = APIRouter()
+
+def _parse_status_match_id(value) -> Optional[int]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="match_id không hợp lệ.")
+
+async def _read_profile_status_request(request: Request) -> tuple[str, Optional[int], Optional[UploadFile]]:
+    content_type = (request.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+    if content_type == "multipart/form-data":
+        form = await request.form()
+        media_candidate = form.get("media")
+        media_file = media_candidate if getattr(media_candidate, "filename", "") else None
+        return (
+            str(form.get("content") or ""),
+            _parse_status_match_id(form.get("match_id")),
+            media_file,
+        )
+
+    try:
+        payload = ProfileStatusPostPayload(**await request.json())
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Payload không hợp lệ.")
+    return payload.content, payload.match_id, None
 
 @router.get("/api/v1/me")
 async def get_me(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -236,21 +269,22 @@ async def update_me_v2(
 
 @router.post("/api/v1/me/statuses", status_code=201)
 async def create_profile_status(
-    payload: ProfileStatusPostPayload,
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    content = _normalize_optional_profile_status(payload.content)
-    if content is None:
-        raise HTTPException(status_code=400, detail="Trạng thái không được để trống.")
+    raw_content, match_id, media_file = await _read_profile_status_request(request)
+    content = _normalize_optional_profile_status(raw_content)
+    if content is None and media_file is None:
+        raise HTTPException(status_code=400, detail="Trạng thái hoặc ảnh/GIF không được để trống.")
 
     match = None
     post_type = PROFILE_POST_TYPE_TEXT
     bet_record = None
-    if payload.match_id is not None:
+    if match_id is not None:
         match = (
             await db.execute(
-                select(Match).where(Match.id == payload.match_id)
+                select(Match).where(Match.id == match_id)
             )
         ).scalars().first()
         if not match:
@@ -271,12 +305,15 @@ async def create_profile_status(
             raise HTTPException(status_code=400, detail="Bạn đã chia sẻ cảm nghĩ cho trận này rồi.")
         post_type = PROFILE_POST_TYPE_MATCH_REACTION
 
+    media_payload = await _save_feed_media_file(media_file) if media_file is not None else None
     post = await _create_profile_status_post(
         db,
         user,
-        content,
+        content or "",
         post_type=post_type,
         match=match,
+        media_url=media_payload["url"] if media_payload else None,
+        media_content_type=media_payload["content_type"] if media_payload else None,
     )
     await db.commit()
     await db.refresh(post)

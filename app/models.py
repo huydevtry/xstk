@@ -74,6 +74,8 @@ class ProfileStatusPost(Base):
     content = Column(String, nullable=False)
     post_type = Column(String, nullable=False, default="text")
     match_id = Column(Integer, ForeignKey("matches.id", ondelete="SET NULL"), nullable=True, index=True)
+    media_url = Column(String, nullable=True)
+    media_content_type = Column(String, nullable=True)
     created_at = Column(DateTime, default=_utc_now_naive, nullable=False, index=True)
 
 

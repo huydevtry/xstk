@@ -102,6 +102,17 @@
         `;
     }
 
+    function renderMedia(media) {
+        const src = safeImageSrc(media?.url);
+        if (!src) return "";
+        const alt = media?.kind === "gif" ? "Ảnh GIF trong bài đăng" : "Ảnh trong bài đăng";
+        return `
+            <div class="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
+                <img src="${src}" alt="${escapeHtml(alt)}" loading="lazy" class="max-h-[520px] w-full object-contain">
+            </div>
+        `;
+    }
+
     function buildAuthorHref(author, options) {
         const hrefBuilder = options?.authorHrefBuilder;
         if (typeof hrefBuilder !== "function" || !author?.id) return null;
@@ -119,6 +130,10 @@
         const badge = item?.post_type === "match_reaction"
             ? `<span class="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sky-700">Trình bày</span>`
             : `<span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">Lè nhè</span>`;
+        const content = String(item?.content || "");
+        const contentNode = content
+            ? `<p class="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">${escapeHtml(content)}</p>`
+            : "";
 
         return `
             <article class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -126,7 +141,8 @@
                     ${authorNode}
                     ${badge}
                 </div>
-                <p class="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">${escapeHtml(item?.content || "")}</p>
+                ${contentNode}
+                ${renderMedia(item?.media)}
                 ${item?.post_type === "match_reaction" ? renderReactionResult(item?.reaction_result) : ""}
                 ${renderMatchSummary(item?.match)}
             </article>

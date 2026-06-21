@@ -5,6 +5,8 @@ let profileData = null;
 let profileBets = [];
 let selectedReactionBet = null;
 let selectedAvatarFile = null;
+let selectedFeedMediaFile = null;
+let selectedFeedMediaPreviewUrl = "";
 let timelineNextOffset = 0;
 let timelineLoading = false;
 let pointTransactions = [];
@@ -14,6 +16,8 @@ let pointHistoryLoading = false;
 const PROFILE_USER_ID = new URLSearchParams(window.location.search).get("user_id") || "";
 const IS_OWN_PROFILE = !PROFILE_USER_ID;
 const APP_TIME_ZONE = "Asia/Ho_Chi_Minh";
+const FEED_MEDIA_MAX_BYTES = 8 * 1024 * 1024;
+const FEED_MEDIA_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>\"']/g, ch => ({
@@ -214,6 +218,66 @@ function updateComposerCount() {
     const count = document.getElementById("default-taunt-count");
     if (!input || !count) return;
     count.textContent = String(input.value.length);
+}
+
+function setFeedMediaError(message) {
+    const errorEl = document.getElementById("feed-media-error");
+    if (!errorEl) return;
+    errorEl.textContent = message || "";
+    errorEl.classList.toggle("hidden", !message);
+}
+
+function resetFeedMediaSelection() {
+    const input = document.getElementById("feed-media-input");
+    const preview = document.getElementById("feed-media-preview");
+    const previewWrap = document.getElementById("feed-media-preview-wrap");
+    const clearBtn = document.getElementById("clear-feed-media");
+    if (selectedFeedMediaPreviewUrl) {
+        URL.revokeObjectURL(selectedFeedMediaPreviewUrl);
+    }
+    selectedFeedMediaFile = null;
+    selectedFeedMediaPreviewUrl = "";
+    if (input) input.value = "";
+    if (preview) preview.src = "";
+    previewWrap?.classList.add("hidden");
+    clearBtn?.classList.add("hidden");
+    setFeedMediaError("");
+}
+
+function setFeedMediaFile(file) {
+    const preview = document.getElementById("feed-media-preview");
+    const previewWrap = document.getElementById("feed-media-preview-wrap");
+    const clearBtn = document.getElementById("clear-feed-media");
+    if (!file) return;
+    if (!FEED_MEDIA_TYPES.has(file.type)) {
+        resetFeedMediaSelection();
+        setFeedMediaError("Chỉ chấp nhận ảnh JPG, PNG, WebP, GIF.");
+        return;
+    }
+    if (file.size > FEED_MEDIA_MAX_BYTES) {
+        resetFeedMediaSelection();
+        setFeedMediaError("Ảnh/GIF quá lớn, tối đa 8MB.");
+        return;
+    }
+    if (selectedFeedMediaPreviewUrl) {
+        URL.revokeObjectURL(selectedFeedMediaPreviewUrl);
+    }
+    selectedFeedMediaFile = file;
+    selectedFeedMediaPreviewUrl = URL.createObjectURL(file);
+    if (preview) preview.src = selectedFeedMediaPreviewUrl;
+    previewWrap?.classList.remove("hidden");
+    clearBtn?.classList.remove("hidden");
+    setFeedMediaError("");
+}
+
+function initFeedMediaPicker() {
+    const chooseBtn = document.getElementById("choose-feed-media");
+    const clearBtn = document.getElementById("clear-feed-media");
+    const input = document.getElementById("feed-media-input");
+    if (!chooseBtn || !clearBtn || !input) return;
+    chooseBtn.addEventListener("click", () => input.click());
+    clearBtn.addEventListener("click", resetFeedMediaSelection);
+    input.addEventListener("change", () => setFeedMediaFile(input.files?.[0]));
 }
 
 function getSelectedMatchSummary(bet) {
@@ -586,6 +650,10 @@ function initComposer() {
             setComposerStatus(`Tối đa ${input.maxLength} ký tự.`, "error");
             return;
         }
+        if (!input.value.trim() && !selectedFeedMediaFile) {
+            setComposerStatus("Nhập trạng thái hoặc chọn ảnh/GIF để đăng.", "error");
+            return;
+        }
 
         saveBtn.disabled = true;
         const oldText = saveBtn.textContent;
@@ -593,21 +661,34 @@ function initComposer() {
         setComposerStatus("");
 
         try {
-            const payload = { content: input.value };
-            if (selectedReactionBet?.match_id) {
-                payload.match_id = Number(selectedReactionBet.match_id);
+            let requestOptions;
+            if (selectedFeedMediaFile) {
+                const form = new FormData();
+                form.append("content", input.value);
+                if (selectedReactionBet?.match_id) {
+                    form.append("match_id", String(Number(selectedReactionBet.match_id)));
+                }
+                form.append("media", selectedFeedMediaFile);
+                requestOptions = { method: "POST", body: form };
+            } else {
+                const payload = { content: input.value };
+                if (selectedReactionBet?.match_id) {
+                    payload.match_id = Number(selectedReactionBet.match_id);
+                }
+                requestOptions = {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                };
             }
 
-            const res = await fetch("/api/v1/me/statuses", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-            });
+            const res = await fetch("/api/v1/me/statuses", requestOptions);
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.detail || `Lỗi ${res.status}`);
 
             input.value = "";
             updateComposerCount();
+            resetFeedMediaSelection();
             setComposerStatus("Đã đăng bài mới.", "success");
 
             if (selectedReactionBet?.match_id) {
@@ -826,6 +907,7 @@ function initNameModal() {
 document.addEventListener("DOMContentLoaded", async () => {
     initHistorySheet();
     initComposer();
+    initFeedMediaPicker();
     initAvatarModal();
     initNameModal();
     document.getElementById("timeline-load-more")?.addEventListener("click", () => fetchTimeline(false));
