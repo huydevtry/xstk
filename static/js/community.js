@@ -6,9 +6,11 @@ let communityLoading = false;
 let selectedReactionBet = null;
 let selectedFeedMediaFile = null;
 let selectedFeedMediaPreviewUrl = "";
+let selectedFeedMediaUrl = "";
+let selectedFeedMediaSource = "";
 
 const FEED_MEDIA_MAX_BYTES = 8 * 1024 * 1024;
-const FEED_MEDIA_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const FEED_MEDIA_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 function communityEscapeHtml(value) {
     return String(value ?? "").replace(/[&<>\"']/g, ch => ({
@@ -30,6 +32,26 @@ function communitySafeImageSrc(value) {
 function communitySafeCssColor(value) {
     const color = String(value ?? "").trim();
     return /^#[0-9a-f]{6}$/i.test(color) ? color : "#6366f1";
+}
+
+function renderComposerIdentity(user) {
+    const nameEl = document.getElementById("composer-display-name");
+    const avatarImg = document.getElementById("composer-avatar-img");
+    const avatarFallback = document.getElementById("composer-avatar-fallback");
+    if (!nameEl || !avatarImg || !avatarFallback) return;
+    const displayName = user?.display_name || user?.name || user?.email?.split("@")?.[0] || user?.initials || "Người dùng";
+    nameEl.textContent = displayName;
+    const avatarSrc = String(user?.avatar_url || "").trim();
+    if (avatarSrc && (avatarSrc.startsWith("/") || /^https?:\/\//i.test(avatarSrc))) {
+        avatarImg.src = avatarSrc;
+        avatarImg.classList.remove("hidden");
+        avatarFallback.classList.add("hidden");
+    } else {
+        avatarFallback.textContent = user?.initials || "??";
+        avatarFallback.style.background = communitySafeCssColor(user?.avatar_color);
+        avatarFallback.classList.remove("hidden");
+        avatarImg.classList.add("hidden");
+    }
 }
 
 function renderCommunityHeaderUser() {
@@ -59,6 +81,21 @@ function updateComposerCount() {
     count.textContent = String(input.value.length);
 }
 
+function autoResizeComposerInput() {
+    const input = document.getElementById("default-taunt-input");
+    if (!input) return;
+    input.style.height = "auto";
+    input.style.height = `${Math.min(input.scrollHeight, 250)}px`;
+    input.style.overflowY = input.scrollHeight > 250 ? "auto" : "hidden";
+}
+
+function updateComposerActionState() {
+    const input = document.getElementById("default-taunt-input");
+    const saveBtn = document.getElementById("save-profile-status");
+    if (!input || !saveBtn) return;
+    saveBtn.disabled = !input.value.trim() && !hasSelectedFeedMedia();
+}
+
 function setFeedMediaError(message) {
     const errorEl = document.getElementById("feed-media-error");
     if (!errorEl) return;
@@ -76,11 +113,14 @@ function resetFeedMediaSelection() {
     }
     selectedFeedMediaFile = null;
     selectedFeedMediaPreviewUrl = "";
+    selectedFeedMediaUrl = "";
+    selectedFeedMediaSource = "";
     if (input) input.value = "";
     if (preview) preview.src = "";
     previewWrap?.classList.add("hidden");
     clearBtn?.classList.add("hidden");
     setFeedMediaError("");
+    updateComposerActionState();
 }
 
 function setFeedMediaFile(file) {
@@ -90,23 +130,56 @@ function setFeedMediaFile(file) {
     if (!file) return;
     if (!FEED_MEDIA_TYPES.has(file.type)) {
         resetFeedMediaSelection();
-        setFeedMediaError("Chỉ chấp nhận ảnh JPG, PNG, WebP, GIF.");
+        setFeedMediaError("Chỉ chấp nhận ảnh JPG, PNG, WebP. GIF hãy chọn từ GIPHY.");
         return;
     }
     if (file.size > FEED_MEDIA_MAX_BYTES) {
         resetFeedMediaSelection();
-        setFeedMediaError("Ảnh/GIF quá lớn, tối đa 8MB.");
+        setFeedMediaError("Ảnh quá lớn, tối đa 8MB.");
         return;
     }
     if (selectedFeedMediaPreviewUrl) {
         URL.revokeObjectURL(selectedFeedMediaPreviewUrl);
     }
     selectedFeedMediaFile = file;
+    selectedFeedMediaUrl = "";
+    selectedFeedMediaSource = "";
     selectedFeedMediaPreviewUrl = URL.createObjectURL(file);
     if (preview) preview.src = selectedFeedMediaPreviewUrl;
     previewWrap?.classList.remove("hidden");
     clearBtn?.classList.remove("hidden");
     setFeedMediaError("");
+    updateComposerActionState();
+}
+
+function setExternalFeedMedia(media) {
+    const preview = document.getElementById("feed-media-preview");
+    const previewWrap = document.getElementById("feed-media-preview-wrap");
+    const clearBtn = document.getElementById("clear-feed-media");
+    const input = document.getElementById("feed-media-input");
+    const url = String(media?.url || "").trim();
+    const provider = String(media?.provider || "").trim().toLowerCase();
+    if (!url || provider !== "giphy") {
+        setFeedMediaError("Không thể chọn GIF lúc này.");
+        return;
+    }
+    if (selectedFeedMediaPreviewUrl) {
+        URL.revokeObjectURL(selectedFeedMediaPreviewUrl);
+    }
+    selectedFeedMediaFile = null;
+    selectedFeedMediaPreviewUrl = "";
+    selectedFeedMediaUrl = url;
+    selectedFeedMediaSource = provider;
+    if (input) input.value = "";
+    if (preview) preview.src = url;
+    previewWrap?.classList.remove("hidden");
+    clearBtn?.classList.remove("hidden");
+    setFeedMediaError("");
+    updateComposerActionState();
+}
+
+function hasSelectedFeedMedia() {
+    return Boolean(selectedFeedMediaFile || selectedFeedMediaUrl);
 }
 
 function initFeedMediaPicker() {
@@ -117,6 +190,22 @@ function initFeedMediaPicker() {
     chooseBtn.addEventListener("click", () => input.click());
     clearBtn.addEventListener("click", resetFeedMediaSelection);
     input.addEventListener("change", () => setFeedMediaFile(input.files?.[0]));
+}
+
+function initGiphyPicker() {
+    window.GiphyPicker?.init({
+        openButtonId: "open-giphy-picker",
+        modalId: "giphy-picker-modal",
+        closeButtonId: "close-giphy-picker",
+        searchInputId: "giphy-search-input",
+        searchButtonId: "giphy-search-button",
+        resultsId: "giphy-picker-results",
+        statusId: "giphy-picker-status",
+        onSelect(media) {
+            setExternalFeedMedia(media);
+            setComposerStatus("Đã chọn GIF từ GIPHY.", "success");
+        },
+    });
 }
 
 function getPastedFeedMediaFile(event) {
@@ -161,6 +250,7 @@ async function fetchCommunityViewer() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         communityViewer = await res.json();
         renderCommunityHeaderUser();
+        renderComposerIdentity(communityViewer);
         composer?.classList.toggle("hidden", communityViewer?.can_edit === false);
     } catch (error) {
         console.error("fetchCommunityViewer error:", error);
@@ -229,6 +319,8 @@ function initCommunityComposer() {
 
     input.addEventListener("input", () => {
         updateComposerCount();
+        autoResizeComposerInput();
+        updateComposerActionState();
         setComposerStatus("");
     });
     input.addEventListener("paste", event => {
@@ -236,7 +328,7 @@ function initCommunityComposer() {
         if (!pastedFile) return;
         event.preventDefault();
         setFeedMediaFile(pastedFile);
-        setComposerStatus("Đã dán ảnh/GIF vào bài đăng.", "success");
+        setComposerStatus("Đã dán ảnh vào bài đăng.", "success");
     });
 
     document.getElementById("clear-selected-match")?.addEventListener("click", () => {
@@ -250,7 +342,7 @@ function initCommunityComposer() {
             setComposerStatus(`Tối đa ${input.maxLength} ký tự.`, "error");
             return;
         }
-        if (!input.value.trim() && !selectedFeedMediaFile) {
+        if (!input.value.trim() && !hasSelectedFeedMedia()) {
             setComposerStatus("Nhập trạng thái hoặc chọn ảnh/GIF để đăng.", "error");
             return;
         }
@@ -275,6 +367,10 @@ function initCommunityComposer() {
                 if (selectedReactionBet?.match_id) {
                     payload.match_id = Number(selectedReactionBet.match_id);
                 }
+                if (selectedFeedMediaUrl && selectedFeedMediaSource) {
+                    payload.external_media_url = selectedFeedMediaUrl;
+                    payload.external_media_provider = selectedFeedMediaSource;
+                }
                 requestOptions = {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -288,6 +384,7 @@ function initCommunityComposer() {
 
             input.value = "";
             updateComposerCount();
+            autoResizeComposerInput();
             resetFeedMediaSelection();
             setComposerStatus("Đã đăng bài mới.", "success");
             selectedReactionBet = null;
@@ -302,6 +399,8 @@ function initCommunityComposer() {
     });
 
     updateComposerCount();
+    autoResizeComposerInput();
+    updateComposerActionState();
     syncSelectedMatchContext();
 }
 
@@ -309,6 +408,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("community-load-more")?.addEventListener("click", () => fetchCommunityTimeline(false));
     initCommunityComposer();
     initFeedMediaPicker();
+    initGiphyPicker();
     fetchCommunityViewer();
     fetchCommunityTimeline(true);
 });

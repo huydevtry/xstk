@@ -19,8 +19,10 @@ from uuid import UUID
 from pathlib import Path
 from decimal import Decimal, ROUND_DOWN
 import html
+import os
 import re
 import json
+from urllib.parse import urlparse
 
 from app.database import Base, get_db
 from app.models import (
@@ -47,6 +49,7 @@ ASSET_VERSION = str(
         int(Path("static/js/app-taunt.js").stat().st_mtime),
         int(Path("static/js/admin.js").stat().st_mtime),
         int(Path("static/js/community.js").stat().st_mtime),
+        int(Path("static/js/giphy-picker.js").stat().st_mtime),
         int(Path("static/js/match-detail.js").stat().st_mtime),
         int(Path("static/js/profile.js").stat().st_mtime),
         int(Path("static/js/timeline.js").stat().st_mtime),
@@ -105,6 +108,8 @@ POINT_TRANSACTIONS_BACKFILL_VERSION = "admin_seed_v3_no_recharge"
 
 LOGOUT_URL = "https://learning.huydevtry.com/cdn-cgi/access/logout"
 
+GIPHY_API_KEY = os.getenv("GIPHY_API_KEY", "").strip()
+
 COUNTRY_CODE_PATH = Path("data/country_code.json")
 
 COUNTRY_CODE_MAP: dict[str, str] = json.loads(COUNTRY_CODE_PATH.read_text(encoding="utf-8"))
@@ -138,6 +143,7 @@ def _page_context(
         "logout_url": _logout_url_for_request(request),
         "current_page": current_page,
         "viewer_is_admin": _is_admin_viewer(viewer),
+        "giphy_api_key": GIPHY_API_KEY,
     }
     context.update(extra)
     return context
@@ -246,10 +252,14 @@ def _serialize_profile_status_media(post: ProfileStatusPost) -> Optional[dict]:
     media_content_type = getattr(post, "media_content_type", None)
     if not media_url or not media_content_type:
         return None
+    parsed = urlparse(media_url)
+    host = (parsed.netloc or "").lower()
+    provider = "giphy" if host == "giphy.com" or host.endswith(".giphy.com") else None
     return {
         "url": media_url,
         "content_type": media_content_type,
         "kind": "gif" if media_content_type == "image/gif" else "image",
+        "provider": provider,
     }
 
 def _serialize_profile_status_post(
@@ -762,6 +772,12 @@ AVATAR_CONTENT_TYPES = {
     "image/gif": "gif",
 }
 
+FEED_UPLOAD_CONTENT_TYPES = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+}
+
 def _detect_image_content_type(contents: bytes) -> Optional[str]:
     if contents.startswith(b"\xff\xd8\xff"):
         return "image/jpeg"
@@ -775,19 +791,19 @@ def _detect_image_content_type(contents: bytes) -> Optional[str]:
 
 async def _save_feed_media_file(file: UploadFile) -> dict:
     content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
-    if content_type not in AVATAR_CONTENT_TYPES:
-        raise HTTPException(status_code=400, detail="Chỉ chấp nhận ảnh JPG, PNG, WebP, GIF.")
+    if content_type not in FEED_UPLOAD_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="Chỉ chấp nhận ảnh JPG, PNG, WebP. GIF chỉ được chọn từ GIPHY.")
 
     contents = await file.read()
     if len(contents) > MAX_FEED_MEDIA_SIZE_BYTES:
-        raise HTTPException(status_code=400, detail="Ảnh/GIF quá lớn, tối đa 8MB.")
+        raise HTTPException(status_code=400, detail="Ảnh quá lớn, tối đa 8MB.")
 
     detected_type = _detect_image_content_type(contents)
     if detected_type != content_type:
         raise HTTPException(status_code=400, detail="Nội dung file không khớp định dạng ảnh.")
 
     FEED_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-    ext = AVATAR_CONTENT_TYPES[content_type]
+    ext = FEED_UPLOAD_CONTENT_TYPES[content_type]
     filename = f"{uuid_lib.uuid4().hex}.{ext}"
     dest = FEED_MEDIA_DIR / filename
     dest.write_bytes(contents)
@@ -795,6 +811,30 @@ async def _save_feed_media_file(file: UploadFile) -> dict:
     return {
         "url": f"/static/feed-media/{filename}",
         "content_type": content_type,
+    }
+
+def _normalize_external_media_payload(media_url: Optional[str], media_provider: Optional[str]) -> Optional[dict]:
+    url = (media_url or "").strip()
+    if not url:
+        return None
+
+    provider = (media_provider or "").strip().lower()
+    if provider != "giphy":
+        raise HTTPException(status_code=400, detail="Nguồn GIF không được hỗ trợ.")
+
+    parsed = urlparse(url)
+    host = (parsed.netloc or "").lower()
+    if parsed.scheme not in {"http", "https"} or not host:
+        raise HTTPException(status_code=400, detail="URL GIF không hợp lệ.")
+    if not (host == "giphy.com" or host.endswith(".giphy.com")):
+        raise HTTPException(status_code=400, detail="Chỉ chấp nhận GIF từ GIPHY.")
+    if not parsed.path.lower().endswith(".gif"):
+        raise HTTPException(status_code=400, detail="Liên kết GIPHY phải là file GIF hợp lệ.")
+
+    return {
+        "url": url,
+        "content_type": "image/gif",
+        "provider": provider,
     }
 
 def _match_result_published(match: Match) -> bool:

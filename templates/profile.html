@@ -243,21 +243,17 @@
             </div>
         </section>
 
-        <section id="profile-composer-section" class="hidden mt-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div class="flex items-start justify-between gap-3">
-                <div>
-                    <div class="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-500">Chia sẻ trạng thái</div>
-                    <p class="mt-1 text-xs text-slate-500">Hôm nay đứa nào làm em buồn?</p>
+        <section id="profile-composer-section" class="hidden mt-4 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.06)] transition-all duration-300">
+            <div class="flex items-center gap-3 border-b border-slate-100 px-4 py-4 sm:px-5">
+                <div class="relative h-10 w-10 overflow-hidden rounded-full bg-gradient-to-tr from-sky-100 to-sky-500 p-[2px]">
+                    <img id="composer-avatar-img" src="" alt="" class="hidden h-full w-full rounded-full border-2 border-white object-cover">
+                    <span id="composer-avatar-fallback" class="flex h-full w-full items-center justify-center rounded-full border-2 border-white text-xs font-black text-white">??</span>
                 </div>
-                <button
-                    id="save-profile-status"
-                    type="button"
-                    class="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-500"
-                >
-                    Đăng
-                </button>
+                <div class="min-w-0">
+                    <div id="composer-display-name" class="truncate text-sm font-semibold text-slate-900">Người dùng</div>
+                </div>
             </div>
-            <div id="selected-match-context" class="hidden mt-3 rounded-2xl border border-sky-200 bg-sky-50 px-3 py-3">
+            <div id="selected-match-context" class="mx-4 mt-4 hidden rounded-2xl border border-sky-200 bg-sky-50 px-3 py-3 sm:mx-5">
                 <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
                         <div class="text-[11px] font-bold uppercase tracking-wide text-sky-700">Đang chia sẻ theo trận</div>
@@ -268,36 +264,48 @@
                     </button>
                 </div>
             </div>
-            <div class="mt-3">
+            <div class="px-4 pb-4 pt-4 sm:px-5 sm:pb-5">
                 <textarea
                     id="default-taunt-input"
                     rows="3"
                     maxlength="160"
-                    class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-300 focus:bg-white"
+                    class="composer-textarea min-h-[84px] w-full resize-none border-none bg-transparent px-0 py-0 text-base leading-7 text-slate-700 outline-none"
                     placeholder="Nhất sinh nhị, nhị sinh tam, tam sinh vạn vật, hư hư thật thật, lỡ tay bet trật vạn vật hóa hư vô..."
                 ></textarea>
-            </div>
-            <div class="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div class="text-xs font-medium text-slate-500">Ảnh hoặc GIF, tối đa 8MB. Có thể dán trực tiếp bằng Ctrl/Cmd+V.</div>
-                    <div class="flex items-center gap-2">
-                        <input id="feed-media-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden">
-                        <button id="choose-feed-media" type="button" class="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-50">
-                            Chọn ảnh/GIF
-                        </button>
-                        <button id="clear-feed-media" type="button" class="hidden rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100">
-                            Bỏ chọn
-                        </button>
-                    </div>
-                </div>
-                <div id="feed-media-error" class="hidden mt-2 text-xs font-medium text-rose-600"></div>
-                <div id="feed-media-preview-wrap" class="hidden mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <div id="feed-media-preview-wrap" class="group relative hidden mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
                     <img id="feed-media-preview" src="" alt="Ảnh xem trước" class="max-h-72 w-full object-contain">
+                    <button id="clear-feed-media" type="button" class="absolute right-3 top-3 hidden items-center gap-1 rounded-full bg-slate-950/55 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-950/75 group-hover:flex">
+                        Bỏ chọn
+                    </button>
+                </div>
+                <div id="feed-media-error" class="hidden mt-3 text-xs font-medium text-rose-600"></div>
+            </div>
+            <div class="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/60 px-4 py-3 sm:px-5">
+                <div class="flex items-center gap-1">
+                    <input id="feed-media-input" type="file" accept="image/jpeg,image/png,image/webp" class="hidden">
+                    <button id="choose-feed-media" type="button" class="group relative flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition hover:bg-sky-50 hover:text-sky-600" aria-label="Chọn ảnh">
+                        <svg class="h-5 w-5 transition-transform group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2 1.586-1.586a2 2 0 012.828 0L20 14m-9-8h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                    </button>
+                    <button id="open-giphy-picker" type="button" class="group relative flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition hover:bg-emerald-50 hover:text-emerald-600" aria-label="Chọn GIF">
+                        <span class="text-[11px] font-black tracking-wide transition-transform group-hover:scale-110">GIF</span>
+                    </button>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="font-semibold text-slate-400"><span id="default-taunt-count">0</span>/160</div>
+                    <button
+                        id="save-profile-status"
+                        type="button"
+                        class="rounded-full bg-sky-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled
+                    >
+                        Đăng
+                    </button>
                 </div>
             </div>
-            <div class="mt-2 flex items-center justify-between gap-3 text-xs">
-                <div id="default-taunt-status" class="text-slate-500"></div>
-                <div class="font-semibold text-slate-400"><span id="default-taunt-count">0</span>/160</div>
+            <div class="px-4 pb-4 pt-2 sm:px-5">
+                <div id="default-taunt-status" class="text-xs text-slate-500"></div>
             </div>
         </section>
 
@@ -464,6 +472,41 @@
         </div>
     </div>
 
+    <div id="giphy-picker-modal" class="hidden fixed inset-0 z-[70] overflow-y-auto bg-slate-950/50 backdrop-blur-sm">
+        <div class="flex min-h-full items-start justify-center px-3 py-4 sm:px-4 sm:py-8">
+            <div class="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl sm:max-h-[calc(100vh-4rem)]">
+                <div class="flex flex-shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-4 py-4">
+                    <div class="min-w-0">
+                        <div class="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-500">GIPHY</div>
+                        <div class="mt-1 text-base font-semibold text-slate-900">Chọn GIF cho bài đăng</div>
+                    </div>
+                    <button id="close-giphy-picker" type="button" class="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="flex min-h-0 flex-1 flex-col space-y-4 px-4 py-4">
+                    <div class="flex flex-shrink-0 flex-col gap-3 sm:flex-row">
+                        <input id="giphy-search-input" type="text" placeholder="Tìm GIF cảm xúc, reaction, meme..." class="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-300 focus:bg-white">
+                        <button id="giphy-search-button" type="button" class="rounded-2xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-500">
+                            Tìm
+                        </button>
+                    </div>
+                    <div id="giphy-picker-status" class="flex-shrink-0 text-xs text-slate-500">Chọn từ thư viện GIF của GIPHY.</div>
+                    <div id="giphy-picker-results" class="min-h-0 flex-1 overflow-y-auto pr-1">
+                        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3"></div>
+                    </div>
+                    <div class="flex-shrink-0 border-t border-slate-200 pt-3 text-center text-xs text-slate-400">
+                        Powered by <a href="https://giphy.com/" target="_blank" rel="noreferrer" class="font-semibold text-slate-500 hover:text-slate-700">GIPHY</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>window.APP_GIPHY_API_KEY = {{ giphy_api_key|tojson }};</script>
+    <script src="/static/js/giphy-picker.js?v={{ asset_version }}"></script>
     <script src="/static/js/timeline.js?v={{ asset_version }}"></script>
     <script src="/static/js/match-detail.js?v={{ asset_version }}"></script>
     <script src="/static/js/user-shell.js?v={{ asset_version }}"></script>

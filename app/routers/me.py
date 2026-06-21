@@ -75,6 +75,7 @@ from app.services.shared import (
     AVATARS_DIR,
     AVATAR_CONTENT_TYPES,
     _detect_image_content_type,
+    _normalize_external_media_payload,
     _save_feed_media_file,
     _match_result_published,
     _match_response,
@@ -158,7 +159,9 @@ def _parse_status_match_id(value) -> Optional[int]:
     except ValueError:
         raise HTTPException(status_code=422, detail="match_id không hợp lệ.")
 
-async def _read_profile_status_request(request: Request) -> tuple[str, Optional[int], Optional[UploadFile]]:
+async def _read_profile_status_request(
+    request: Request,
+) -> tuple[str, Optional[int], Optional[UploadFile], Optional[str], Optional[str]]:
     content_type = (request.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
     if content_type == "multipart/form-data":
         form = await request.form()
@@ -168,6 +171,8 @@ async def _read_profile_status_request(request: Request) -> tuple[str, Optional[
             str(form.get("content") or ""),
             _parse_status_match_id(form.get("match_id")),
             media_file,
+            str(form.get("external_media_url") or ""),
+            str(form.get("external_media_provider") or ""),
         )
 
     try:
@@ -176,7 +181,13 @@ async def _read_profile_status_request(request: Request) -> tuple[str, Optional[
         raise HTTPException(status_code=422, detail=exc.errors())
     except ValueError:
         raise HTTPException(status_code=400, detail="Payload không hợp lệ.")
-    return payload.content, payload.match_id, None
+    return (
+        payload.content,
+        payload.match_id,
+        None,
+        payload.external_media_url,
+        payload.external_media_provider,
+    )
 
 @router.get("/api/v1/me")
 async def get_me(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -273,9 +284,12 @@ async def create_profile_status(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    raw_content, match_id, media_file = await _read_profile_status_request(request)
+    raw_content, match_id, media_file, external_media_url, external_media_provider = await _read_profile_status_request(request)
     content = _normalize_optional_profile_status(raw_content)
-    if content is None and media_file is None:
+    external_media = _normalize_external_media_payload(external_media_url, external_media_provider)
+    if media_file is not None and external_media is not None:
+        raise HTTPException(status_code=400, detail="Chỉ được chọn một nguồn media cho mỗi bài đăng.")
+    if content is None and media_file is None and external_media is None:
         raise HTTPException(status_code=400, detail="Trạng thái hoặc ảnh/GIF không được để trống.")
 
     match = None
@@ -305,7 +319,7 @@ async def create_profile_status(
             raise HTTPException(status_code=400, detail="Bạn đã chia sẻ cảm nghĩ cho trận này rồi.")
         post_type = PROFILE_POST_TYPE_MATCH_REACTION
 
-    media_payload = await _save_feed_media_file(media_file) if media_file is not None else None
+    media_payload = await _save_feed_media_file(media_file) if media_file is not None else external_media
     post = await _create_profile_status_post(
         db,
         user,

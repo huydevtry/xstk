@@ -8,6 +8,23 @@ body {
 ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 999px; }
 ::-webkit-scrollbar-track { background: #e2e8f0; }
 
+.composer-textarea {
+    transition: height 0.2s ease, box-shadow 0.2s ease;
+}
+
+.composer-textarea::-webkit-scrollbar {
+    width: 6px;
+}
+
+.composer-textarea::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.composer-textarea::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 999px;
+}
+
 button, a, .clickable-card { -webkit-tap-highlight-color: transparent; }
 
 .user-menu-panel {

@@ -24,7 +24,7 @@
 - Jinja2 templates
 - JavaScript thuần cho giao diện
 - Cloudflare Access cho định danh người dùng
-
+- Giphy API
 ## Cài Đặt Local
 
 Yêu cầu:
@@ -47,6 +47,7 @@ LOCAL_DEV_AUTH=true
 LOCAL_DEV_EMAIL=admin@example.com
 ADMIN_EMAILS=admin@example.com
 APP_BASE_URL=http://127.0.0.1:8000
+GIPHY_API_KEY=your_giphy_api_key
 ```
 
 Chạy ứng dụng:
@@ -73,6 +74,7 @@ Các biến thường dùng:
 | `LOCAL_DEV_EMAIL` | Email người dùng local. Nếu email nằm trong `ADMIN_EMAILS` thì có quyền admin. |
 | `ADMIN_EMAILS` hoặc `ADMIN_EMAIL` | Danh sách email admin, phân tách bằng dấu phẩy. |
 | `APP_BASE_URL` | URL public của app, dùng trong thông báo admin. |
+| `GIPHY_API_KEY` | API key để mở nút chọn GIF từ GIPHY trong composer. |
 | `TELEGRAM_BOT_TOKEN` | Token bot Telegram, tùy chọn. |
 | `TELEGRAM_ADMIN_CHAT_ID` | Chat ID nhận thông báo user mới, tùy chọn. |
 

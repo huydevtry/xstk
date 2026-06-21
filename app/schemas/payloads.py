@@ -42,3 +42,5 @@ class UpdateProfilePayload(BaseModel):
 class ProfileStatusPostPayload(BaseModel):
     content: str = Field(..., max_length=MAX_PROFILE_STATUS_LENGTH)
     match_id: Optional[int] = None
+    external_media_url: Optional[str] = Field(default=None, max_length=2000)
+    external_media_provider: Optional[str] = Field(default=None, max_length=50)

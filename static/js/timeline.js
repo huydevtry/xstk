@@ -105,10 +105,16 @@
     function renderMedia(media) {
         const src = safeImageSrc(media?.url);
         if (!src) return "";
+        const providerLabel = media?.provider === "giphy"
+            ? `<div class="mt-2 text-right text-[11px] text-slate-400">Powered by <a href="https://giphy.com/" target="_blank" rel="noreferrer" class="font-semibold text-slate-500 hover:text-slate-700">GIPHY</a></div>`
+            : "";
         const alt = media?.kind === "gif" ? "Ảnh GIF trong bài đăng" : "Ảnh trong bài đăng";
         return `
-            <div class="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-                <img src="${src}" alt="${escapeHtml(alt)}" loading="lazy" class="max-h-[520px] w-full object-contain">
+            <div class="mt-3">
+                <div class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
+                    <img src="${src}" alt="${escapeHtml(alt)}" loading="lazy" class="max-h-[520px] w-full object-contain">
+                </div>
+                ${providerLabel}
             </div>
         `;
     }
