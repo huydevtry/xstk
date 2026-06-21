@@ -438,7 +438,6 @@ async function refreshAll() {
         fetchOverview(),
         fetchSettings(),
         fetchUsers(state.userSearch),
-        fetchRechargeRequests(),
         fetchMatches(),
     ]);
 }
