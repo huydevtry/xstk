@@ -166,8 +166,8 @@ function applyProfileUI() {
 
 function renderStats() {
     const finished = profileBets.filter(bet => String(bet.match_status || "").toLowerCase() === "finished" && bet.result_published);
-    const wins = finished.filter(bet => Number(bet.points_earned || 0) > 0);
-    const loses = finished.filter(bet => Number(bet.points_earned || 0) === 0);
+    const wins = finished.filter(bet => ["WIN", "HALF_WIN"].includes(String(bet.outcome || "")));
+    const loses = finished.filter(bet => ["LOSE", "HALF_LOSE"].includes(String(bet.outcome || "")));
     document.getElementById("stat-total").textContent = String(profileBets.length);
     document.getElementById("stat-win").textContent = String(wins.length);
     document.getElementById("stat-lose").textContent = String(loses.length);
@@ -439,15 +439,21 @@ function focusComposer() {
 
 function historyBadgeHtml(bet) {
     const isFinished = String(bet.match_status || "").toLowerCase() === "finished";
-    const isWin = isFinished && Number(bet.points_earned || 0) > 0;
     if (!isFinished || !bet.result_published) {
         return `<span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">Chờ kết quả</span>`;
     }
-    if (bet.points_earned === null) {
+    const outcome = String(bet.outcome || "");
+    if (outcome === "REFUND") {
         return `<span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Hoàn điểm</span>`;
     }
-    if (isWin) {
+    if (outcome === "WIN") {
         return `<span class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">✅ Thắng</span>`;
+    }
+    if (outcome === "HALF_WIN") {
+        return `<span class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">✅ Thắng nửa</span>`;
+    }
+    if (outcome === "HALF_LOSE") {
+        return `<span class="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-orange-700">➗ Thua nửa</span>`;
     }
     return `<span class="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">❌ Thua</span>`;
 }
@@ -492,7 +498,7 @@ function renderHistoryList() {
                             <div class="mt-1 text-[11px] text-slate-400">Trận ${escapeHtml(formatProfileTime(bet.start_time))} • Đặt ${escapeHtml(formatProfileTime(bet.created_at))}</div>
                         </div>
                         <div class="flex-shrink-0 text-right">
-                            <div class="text-sm font-black text-[#D3af37]">${bet.points_earned === null ? "—" : `${Number(bet.points_earned || 0) > 0 ? "+" : ""}${formatCoins(Math.abs(Number(bet.points_earned || 0)))}`}</div>
+                            <div class="text-sm font-black text-[#D3af37]">${bet.reward_label ? escapeHtml(bet.reward_label) : "—"}</div>
                             <div class="text-[11px] text-slate-400">Chi tiết</div>
                         </div>
                     </div>

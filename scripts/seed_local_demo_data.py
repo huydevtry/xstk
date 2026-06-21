@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta
+from decimal import Decimal, ROUND_DOWN
 from pathlib import Path
 
 
@@ -140,7 +141,7 @@ def build_matches(now: datetime) -> list[dict]:
             "away_team": "Monaco",
             "home_icon": None,
             "away_icon": None,
-            "handicap": 0.5,
+            "handicap": 0.75,
             "home_score": 1,
             "away_score": 2,
             "status": "finished",
@@ -176,7 +177,7 @@ def build_matches(now: datetime) -> list[dict]:
             "away_team": "Dortmund",
             "home_icon": None,
             "away_icon": None,
-            "handicap": -0.5,
+            "handicap": -0.25,
             "home_score": 0,
             "away_score": 0,
             "status": "upcoming",
@@ -235,6 +236,88 @@ def winning_choice(match: dict) -> str:
     if adjusted_home < adjusted_away:
         return "AWAY"
     return "DRAW"
+
+
+def handicap_component_lines(handicap: float) -> list[Decimal]:
+    line = Decimal(str(handicap)).quantize(Decimal("0.01"))
+    fraction = abs(line) % 1
+    if fraction in {Decimal("0.25"), Decimal("0.75")}:
+        quarter = Decimal("0.25")
+        return [line - quarter, line + quarter]
+    return [line]
+
+
+def two_way_component_result(match: dict, handicap_line: Decimal, choice: str) -> str:
+    adjusted_home = Decimal(str(match["home_score"])) + handicap_line
+    adjusted_away = Decimal(str(match["away_score"]))
+    if adjusted_home > adjusted_away:
+        winner = "HOME"
+    elif adjusted_home < adjusted_away:
+        winner = "AWAY"
+    else:
+        winner = None
+    if winner is None:
+        return "REFUND"
+    return "WIN" if choice == winner else "LOSE"
+
+
+def settle_two_way_bets(grouped_bets: list[dict], match: dict) -> None:
+    component_lines = handicap_component_lines(float(match["handicap"]))
+    divisor = Decimal(len(component_lines))
+    exact_returns = {id(bet): Decimal("0") for bet in grouped_bets}
+    component_results = {id(bet): [] for bet in grouped_bets}
+
+    for handicap_line in component_lines:
+        stake_parts = {id(bet): Decimal(str(bet["stake"])) / divisor for bet in grouped_bets}
+        total_pool = sum(stake_parts.values(), Decimal("0"))
+        natural_results = {
+            id(bet): two_way_component_result(match, handicap_line, str(bet["choice"]))
+            for bet in grouped_bets
+        }
+        winner_ids = [bet_id for bet_id, result in natural_results.items() if result == "WIN"]
+        if not winner_ids:
+            for bet in grouped_bets:
+                bet_id = id(bet)
+                component_results[bet_id].append("REFUND")
+                exact_returns[bet_id] += stake_parts[bet_id]
+            continue
+
+        total_winner_stake = sum((stake_parts[bet_id] for bet_id in winner_ids), Decimal("0"))
+        for bet in grouped_bets:
+            bet_id = id(bet)
+            result = natural_results[bet_id]
+            component_results[bet_id].append(result)
+            if result == "WIN":
+                exact_returns[bet_id] += (total_pool * stake_parts[bet_id]) / total_winner_stake
+            elif result == "REFUND":
+                exact_returns[bet_id] += stake_parts[bet_id]
+
+    allocated_returns = {
+        bet_id: int(value.to_integral_value(rounding=ROUND_DOWN))
+        for bet_id, value in exact_returns.items()
+    }
+    total_allocated = sum(allocated_returns.values())
+    total_stake = sum(int(bet["stake"]) for bet in grouped_bets)
+    remainder = max(0, total_stake - total_allocated)
+    fractional_items = sorted(
+        (
+            (exact_returns[id(bet)] - Decimal(allocated_returns[id(bet)]), bet["created_at"], id(bet))
+            for bet in grouped_bets
+        ),
+        key=lambda item: (-item[0], item[1], item[2]),
+    )
+    for index in range(remainder):
+        _, _, bet_id = fractional_items[index]
+        allocated_returns[bet_id] += 1
+
+    for bet in grouped_bets:
+        bet_id = id(bet)
+        results = set(component_results[bet_id])
+        payout = allocated_returns[bet_id]
+        if results == {"REFUND"} and payout == int(bet["stake"]):
+            bet["points_earned"] = None
+        else:
+            bet["points_earned"] = payout
 
 
 def insert_matches(cursor: sqlite3.Cursor, matches: list[dict], now: datetime) -> dict[int, dict]:
@@ -331,6 +414,10 @@ def settle_bets(bets: list[dict], match_map: dict[int, dict]) -> None:
     for match_id, grouped_bets in bets_by_match.items():
         match = match_map[match_id]
         if match["status"] != "finished" or not match["resolved_at"]:
+            continue
+
+        if float(match["handicap"]) % 1 != 0:
+            settle_two_way_bets(grouped_bets, match)
             continue
 
         winner = winning_choice(match)

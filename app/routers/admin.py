@@ -94,6 +94,8 @@ from app.services.shared import (
     _build_headline_quote,
     _build_match_detail_payload,
     _build_profile_payload,
+    _compute_two_way_settlement,
+    _resolve_market_winning_choice,
     Depends,
     HTTPException,
     UploadFile,
@@ -470,13 +472,7 @@ async def resolve_match(
         # Tính adjusted score với handicap
         adjusted_home = payload.home_score + match.handicap
         adjusted_away = payload.away_score
-
-        if adjusted_home > adjusted_away:
-            winning_choice = "HOME"
-        elif adjusted_home < adjusted_away:
-            winning_choice = "AWAY"
-        else:
-            winning_choice = "DRAW"
+        winning_choice = _resolve_market_winning_choice(match)
 
         # Lấy tất cả bets của trận
         bets = (await db.execute(
@@ -491,11 +487,42 @@ async def resolve_match(
         } if user_ids else {}
 
         total_pool = sum(b.stake for b in bets)
+        settlement = _compute_two_way_settlement(match, bets) if match.handicap % 1 != 0 else None
         winning_bets = [b for b in bets if b.choice == winning_choice]
         stakes_on_winner = sum(b.stake for b in winning_bets)
-        refunded = not winning_bets or stakes_on_winner == 0
+        refunded = settlement["refunded"] if settlement is not None else (not winning_bets or stakes_on_winner == 0)
 
-        if refunded:
+        if settlement is not None:
+            for bet in bets:
+                payout = settlement["payout_by_bet_id"].get(bet.id)
+                bet.points_earned = payout
+                db.add(bet)
+
+                if payout is None:
+                    payout_delta = bet.stake
+                    transaction_type = PointTransactionType.bet_refund
+                    description = f"Hoàn điểm trận: {match.home_team} vs {match.away_team}"
+                elif payout > 0:
+                    payout_delta = payout
+                    transaction_type = PointTransactionType.bet_reward
+                    description = f"Thưởng cược trận: {match.home_team} vs {match.away_team}"
+                else:
+                    continue
+
+                user_q = users_by_id.get(bet.user_id)
+                if user_q:
+                    user_q.total_points += payout_delta
+                    db.add(user_q)
+                    await _record_point_transaction(
+                        db,
+                        user=user_q,
+                        delta_points=payout_delta,
+                        transaction_type=transaction_type,
+                        description=description,
+                        bet=bet,
+                        match=match,
+                    )
+        elif refunded:
             # Refund tất cả nếu không có ai cược đúng
             for bet in bets:
                 bet.points_earned = None

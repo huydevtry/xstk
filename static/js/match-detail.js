@@ -66,7 +66,9 @@
     function getOutcomeBadgeClass(outcome) {
         return {
             WIN: "border-emerald-200 bg-emerald-50 text-emerald-700",
+            HALF_WIN: "border-emerald-200 bg-emerald-50 text-emerald-700",
             LOSE: "border-rose-200 bg-rose-50 text-rose-700",
+            HALF_LOSE: "border-orange-200 bg-orange-50 text-orange-700",
             REFUND: "border-amber-200 bg-amber-50 text-amber-700",
             PENDING: "border-slate-200 bg-slate-50 text-slate-600",
         }[outcome] || "border-slate-200 bg-slate-50 text-slate-600";
@@ -239,7 +241,12 @@
                         ${myBet ? `<div class="text-[11px] text-[#D3af37]">${escapeHtml(myBet.reward_label || myBet.outcome_label || "")}</div>` : ""}
                     </div>
                 </div>
-                ${myBet ? `<div class="text-xs text-slate-500">${escapeHtml(myBet.quote || "Vào đúng cửa thì uống trà, vào lệch cửa thì ngồi ngẫm đời.")}</div>` : `<div class="text-xs text-slate-500">Chưa đặt cược vẫn xem được quỹ và danh sách để cân nhắc cửa vào.</div>`}
+                ${myBet ? `
+                    <div class="space-y-2">
+                        <div class="text-xs text-slate-500">${escapeHtml(myBet.quote || "Vào đúng cửa thì uống trà, vào lệch cửa thì ngồi ngẫm đời.")}</div>
+                        ${myBet.taunt_text ? `<div class="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700">Câu gáy: ${escapeHtml(myBet.taunt_text)}</div>` : ""}
+                    </div>
+                ` : `<div class="text-xs text-slate-500">Chưa đặt cược vẫn xem được quỹ và danh sách để cân nhắc cửa vào.</div>`}
             </div>`;
     }
 

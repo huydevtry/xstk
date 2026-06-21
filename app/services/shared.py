@@ -71,6 +71,8 @@ OUTCOME_LABELS = {
     "WIN": "Thắng",
     "LOSE": "Thua",
     "REFUND": "Hoàn điểm",
+    "HALF_WIN": "Thắng nửa",
+    "HALF_LOSE": "Thua nửa",
     "PENDING": "Chờ kết quả",
 }
 
@@ -204,6 +206,165 @@ def _normalize_timeline_limit(limit: int) -> int:
 def _normalize_point_transaction_limit(limit: int) -> int:
     return max(1, min(limit, MAX_POINT_TRANSACTION_PAGE_SIZE))
 
+def _decimal_handicap(value: float | Decimal | int) -> Decimal:
+    return Decimal(str(value)).quantize(Decimal("0.01"))
+
+def _is_two_way_handicap(handicap: float | Decimal | int) -> bool:
+    return _decimal_handicap(handicap) % 1 != 0
+
+def _is_quarter_handicap(handicap: float | Decimal | int) -> bool:
+    fraction = abs(_decimal_handicap(handicap)) % 1
+    return fraction in {Decimal("0.25"), Decimal("0.75")}
+
+def _handicap_component_lines(handicap: float | Decimal | int) -> list[Decimal]:
+    line = _decimal_handicap(handicap)
+    if _is_quarter_handicap(line):
+        quarter = Decimal("0.25")
+        return [line - quarter, line + quarter]
+    return [line]
+
+def _two_way_component_result(
+    *,
+    home_score: int,
+    away_score: int,
+    handicap_line: Decimal,
+    choice: str,
+) -> str:
+    adjusted_home = Decimal(home_score) + handicap_line
+    adjusted_away = Decimal(away_score)
+    if adjusted_home > adjusted_away:
+        winner = "HOME"
+    elif adjusted_home < adjusted_away:
+        winner = "AWAY"
+    else:
+        winner = None
+
+    if winner is None:
+        return "REFUND"
+    return "WIN" if choice == winner else "LOSE"
+
+def _outcome_from_component_results(component_results: list[str]) -> str:
+    unique = set(component_results)
+    if unique == {"REFUND"}:
+        return "REFUND"
+    if unique == {"WIN"}:
+        return "WIN"
+    if unique == {"LOSE"}:
+        return "LOSE"
+    if unique == {"WIN", "REFUND"}:
+        return "HALF_WIN"
+    if unique == {"LOSE", "REFUND"}:
+        return "HALF_LOSE"
+    return "PENDING"
+
+def _resolve_market_winning_choice(match: Match) -> str:
+    adjusted_home = match.home_score + match.handicap
+    adjusted_away = match.away_score
+    if adjusted_home > adjusted_away:
+        return "HOME"
+    if adjusted_home < adjusted_away:
+        return "AWAY"
+    return "DRAW"
+
+def _derive_bet_outcome(match: Match, bet: Bet) -> str:
+    if not _match_result_published(match):
+        return "PENDING"
+    if bet.points_earned is None:
+        return "REFUND"
+
+    if _is_two_way_handicap(match.handicap) and bet.choice in {"HOME", "AWAY"}:
+        component_results = [
+            _two_way_component_result(
+                home_score=match.home_score,
+                away_score=match.away_score,
+                handicap_line=line,
+                choice=bet.choice,
+            )
+            for line in _handicap_component_lines(match.handicap)
+        ]
+        return _outcome_from_component_results(component_results)
+
+    winner = _resolve_market_winning_choice(match)
+    return "WIN" if bet.choice == winner else "LOSE"
+
+def _compute_two_way_settlement(match: Match, bets: list[Bet]) -> dict:
+    component_lines = _handicap_component_lines(match.handicap)
+    divisor = Decimal(len(component_lines))
+    exact_returns: dict[int, Decimal] = {bet.id: Decimal("0") for bet in bets if bet.id is not None}
+    component_results: dict[int, list[str]] = {bet.id: [] for bet in bets if bet.id is not None}
+
+    for handicap_line in component_lines:
+        stake_parts = {
+            bet.id: Decimal(bet.stake) / divisor
+            for bet in bets
+            if bet.id is not None
+        }
+        total_pool = sum(stake_parts.values(), Decimal("0"))
+        natural_results = {
+            bet.id: _two_way_component_result(
+                home_score=match.home_score,
+                away_score=match.away_score,
+                handicap_line=handicap_line,
+                choice=bet.choice,
+            )
+            for bet in bets
+            if bet.id is not None
+        }
+        winner_ids = [
+            bet_id
+            for bet_id, result in natural_results.items()
+            if result == "WIN"
+        ]
+
+        if not winner_ids:
+            for bet_id, stake_part in stake_parts.items():
+                component_results[bet_id].append("REFUND")
+                exact_returns[bet_id] += stake_part
+            continue
+
+        total_winner_stake = sum((stake_parts[bet_id] for bet_id in winner_ids), Decimal("0"))
+        for bet_id, result in natural_results.items():
+            component_results[bet_id].append(result)
+            if result == "WIN":
+                exact_returns[bet_id] += (total_pool * stake_parts[bet_id]) / total_winner_stake
+            elif result == "REFUND":
+                exact_returns[bet_id] += stake_parts[bet_id]
+
+    allocated_returns = {
+        bet_id: int(value.to_integral_value(rounding=ROUND_DOWN))
+        for bet_id, value in exact_returns.items()
+    }
+    total_allocated = sum(allocated_returns.values())
+    total_stake = sum(int(bet.stake) for bet in bets)
+    remainder = max(0, total_stake - total_allocated)
+    fractional_items = sorted(
+        (
+            (exact_returns[bet.id] - Decimal(allocated_returns[bet.id]), bet.created_at, bet.id)
+            for bet in bets
+            if bet.id is not None
+        ),
+        key=lambda item: (-item[0], item[1], item[2]),
+    )
+    for index in range(remainder):
+        _, _, bet_id = fractional_items[index]
+        allocated_returns[bet_id] += 1
+
+    payout_by_bet_id: dict[int, Optional[int]] = {}
+    outcome_by_bet_id: dict[int, str] = {}
+    for bet in bets:
+        if bet.id is None:
+            continue
+        outcome = _outcome_from_component_results(component_results[bet.id])
+        payout = allocated_returns[bet.id]
+        payout_by_bet_id[bet.id] = None if outcome == "REFUND" and payout == int(bet.stake) else payout
+        outcome_by_bet_id[bet.id] = outcome
+
+    return {
+        "payout_by_bet_id": payout_by_bet_id,
+        "outcome_by_bet_id": outcome_by_bet_id,
+        "refunded": bool(bets) and all(outcome == "REFUND" for outcome in outcome_by_bet_id.values()),
+    }
+
 def _serialize_profile_status_match(match: Optional[Match]) -> Optional[dict]:
     if match is None:
         return None
@@ -226,24 +387,11 @@ def _serialize_match_reaction_result(
 ) -> Optional[dict]:
     if bet is None or match is None or not _match_result_published(match):
         return None
-    if bet.points_earned is None:
-        return {
-            "outcome": "refund",
-            "outcome_label": "Hoàn điểm",
-            "points_earned": None,
-            "stake": bet.stake,
-        }
-    if int(bet.points_earned or 0) > 0:
-        return {
-            "outcome": "win",
-            "outcome_label": "Thắng",
-            "points_earned": bet.points_earned,
-            "stake": bet.stake,
-        }
+    outcome = _derive_bet_outcome(match, bet)
     return {
-        "outcome": "lose",
-        "outcome_label": "Thua",
-        "points_earned": 0,
+        "outcome": outcome.lower(),
+        "outcome_label": OUTCOME_LABELS.get(outcome, "Chờ kết quả"),
+        "points_earned": bet.points_earned,
         "stake": bet.stake,
     }
 
@@ -1028,6 +1176,7 @@ def _serialize_bet_history_entry(
     can_share_reaction: bool,
     has_shared_reaction: bool,
 ) -> dict:
+    outcome = _derive_bet_outcome(match, bet)
     return {
         "bet_id": bet.id,
         "match_id": match.id,
@@ -1042,9 +1191,14 @@ def _serialize_bet_history_entry(
         "start_time": _serialize_app_datetime(match.start_time),
         "choice": bet.choice,
         "stake": bet.stake,
+        "taunt_text": bet.taunt_text,
         "points_earned": bet.points_earned,
+        "outcome": outcome,
+        "outcome_label": OUTCOME_LABELS.get(outcome, "Chờ kết quả"),
+        "reward_label": _format_reward_label(outcome, bet.stake, bet.points_earned),
         "created_at": _serialize_utc_datetime(bet.created_at),
         "result_published": _match_result_published(match),
+        "can_edit_taunt": match.status == MatchStatus.upcoming,
         "can_share_reaction": can_share_reaction,
         "has_shared_reaction": has_shared_reaction,
     }
@@ -1140,8 +1294,8 @@ def _stable_pick(options, seed: str) -> str:
     return options[int(digest, 16) % len(options)]
 
 def _format_reward_label(outcome: str, stake: int, points_earned: Optional[int]) -> str:
-    if outcome == "WIN":
-        return f"+{_format_coins(int(points_earned or 0))}"
+    if outcome in {"WIN", "HALF_WIN", "HALF_LOSE"}:
+        return f"Nhận {_format_coins(int(points_earned or 0))}"
     if outcome == "LOSE":
         return "0d"
     if outcome == "REFUND":
@@ -1166,10 +1320,20 @@ def _build_detail_quote(
             "{name} chọn {choice} chuẩn như xem trước kết quả. Đám đông xin phép học theo.",
             "{name} vào kèo {choice} rất gọn. Trận này trực giác đã thắng tranh cãi.",
         ],
+        "HALF_WIN": [
+            "{name} đi cửa {choice} và ăn nửa kèo rất tỉnh. Chưa phải đại thắng, nhưng đủ để nói chuyện bằng nụ cười.",
+            "{name} ôm {choice} đúng nhịp để thắng nửa. Không ồn ào, chỉ là lời lãi đến vừa đẹp.",
+            "{name} chọn {choice} và lấy về nửa chiến công. Kèo này thắng không trọn nhưng gáy vẫn có cơ sở.",
+        ],
         "LOSE": [
             "{name} chọn {choice} khá tự tin, nhưng kết quả lại trả lời theo kiểu rất thẳng.",
             "{name} vừa trải nghiệm một pha kèo không chiều lòng niềm tin.",
             "{name} đi cửa {choice} hơi sớm một nhịp. Hôm nay trực giác xin nghỉ phép.",
+        ],
+        "HALF_LOSE": [
+            "{name} đi cửa {choice} và chỉ mất nửa kèo. Có đau, nhưng vẫn còn lý do để làm lại.",
+            "{name} ôm {choice} chưa tới mức trắng tay. Trận này đời chỉ thu học phí một nửa.",
+            "{name} vừa trải qua cú thua nửa khá lửng lơ. Không vui, nhưng chưa đến mức phải tắt máy đi ngủ.",
         ],
         "REFUND": [
             "{name} gặp kèo hoàn điểm. Ít ra ví vẫn nguyên, tinh thần cũng đỡ đau.",
@@ -1310,7 +1474,7 @@ async def _build_match_detail_payload(
     total_pool = sum(summary[ch]["stake"] for ch in summary)
     stakes_on_winner = summary[winning_choice]["stake"] if winning_choice else 0
     has_bets = bool(rows)
-    refunded = result_published and has_bets and (stakes_on_winner == 0)
+    refunded = result_published and has_bets and all(row.Bet.points_earned is None for row in rows)
 
     settlement = {
         "is_finished": is_finished,
@@ -1329,18 +1493,11 @@ async def _build_match_detail_payload(
     }
 
     for row in rows:
-        if not result_published:
-            outcome = "PENDING"
-        elif refunded:
-            outcome = "REFUND"
-        elif row.Bet.choice == winning_choice:
-            outcome = "WIN"
-        else:
-            outcome = "LOSE"
+        outcome = _derive_bet_outcome(match, row.Bet)
 
-        if outcome == "WIN":
+        if outcome in {"WIN", "HALF_WIN"}:
             settlement["winner_count"] += 1
-        elif outcome == "LOSE":
+        elif outcome in {"LOSE", "HALF_LOSE"}:
             settlement["loser_count"] += 1
         elif outcome == "REFUND":
             settlement["refund_count"] += 1
@@ -1371,18 +1528,13 @@ async def _build_match_detail_payload(
     my_row = next((row for row in rows if row.User.id == user.id), None)
     my_bet = None
     if my_row:
-        if not result_published:
-            my_outcome = "PENDING"
-        elif refunded:
-            my_outcome = "REFUND"
-        elif my_row.Bet.choice == winning_choice:
-            my_outcome = "WIN"
-        else:
-            my_outcome = "LOSE"
+        my_outcome = _derive_bet_outcome(match, my_row.Bet)
 
         my_bet = {
+            "bet_id": my_row.Bet.id,
             "choice": my_row.Bet.choice,
             "stake": my_row.Bet.stake,
+            "taunt_text": my_row.Bet.taunt_text,
             "points_earned": my_row.Bet.points_earned,
             "created_at": _serialize_utc_datetime(my_row.Bet.created_at),
             "outcome": my_outcome,

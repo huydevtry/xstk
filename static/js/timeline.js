@@ -81,10 +81,11 @@
 
     function renderReactionResult(result) {
         if (!result?.outcome) return "";
-        if (result.outcome === "win") {
+        if (result.outcome === "win" || result.outcome === "half_win") {
+            const icon = result.outcome === "half_win" ? "➗" : "✅";
             return `
                 <div class="mt-3 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
-                    ✅ ${escapeHtml(result.outcome_label || "Thắng")}
+                    ${icon} ${escapeHtml(result.outcome_label || "Thắng")} ${result.points_earned !== null && result.points_earned !== undefined ? escapeHtml(formatCoins(result.points_earned)) : ""}
                 </div>
             `;
         }
@@ -92,6 +93,13 @@
             return `
                 <div class="mt-3 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
                     ↺ ${escapeHtml(result.outcome_label || "Hoàn điểm")} ${escapeHtml(formatCoins(result.stake || 0))}
+                </div>
+            `;
+        }
+        if (result.outcome === "half_lose") {
+            return `
+                <div class="mt-3 inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-bold text-orange-700">
+                    ➗ ${escapeHtml(result.outcome_label || "Thua nửa")} ${result.points_earned !== null && result.points_earned !== undefined ? escapeHtml(formatCoins(result.points_earned)) : ""}
                 </div>
             `;
         }
@@ -133,9 +141,6 @@
             ? `<a href="${escapeHtml(authorHref)}" class="inline-flex min-w-0 items-center gap-3 hover:opacity-90">${renderAvatar(author)}<div class="min-w-0"><div class="truncate text-sm font-semibold text-slate-900">${authorName}</div><div class="text-[11px] text-slate-400">${escapeHtml(formatTime(item?.created_at))}</div></div></a>`
             : `<div class="inline-flex min-w-0 items-center gap-3">${renderAvatar(author)}<div class="min-w-0"><div class="truncate text-sm font-semibold text-slate-900">${authorName}</div><div class="text-[11px] text-slate-400">${escapeHtml(formatTime(item?.created_at))}</div></div></div>`;
 
-        const badge = item?.post_type === "match_reaction"
-            ? `<span class="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sky-700">Trình bày</span>`
-            : `<span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">Lè nhè</span>`;
         const content = String(item?.content || "");
         const contentNode = content
             ? `<p class="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">${escapeHtml(content)}</p>`
@@ -145,7 +150,6 @@
             <article class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div class="flex items-start justify-between gap-3">
                     ${authorNode}
-                    ${badge}
                 </div>
                 ${contentNode}
                 ${renderMedia(item?.media)}

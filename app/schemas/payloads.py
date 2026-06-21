@@ -12,6 +12,13 @@ class BetPayload(BaseModel):
     stake: int = Field(..., ge=1)
     taunt_text: Optional[str] = None
 
+class BetTauntPayload(BaseModel):
+    taunt_text: Optional[str] = None
+
+class UpdateBetPayload(BaseModel):
+    choice: Literal["HOME", "DRAW", "AWAY"]
+    taunt_text: Optional[str] = None
+
 class ResolvePayload(BaseModel):
     home_score: int = Field(..., ge=0)
     away_score: int = Field(..., ge=0)

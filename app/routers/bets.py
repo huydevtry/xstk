@@ -4,9 +4,11 @@ from app.schemas.payloads import (
     AdminSettingsPayload,
     AdminUserPointsPayload,
     BetPayload,
+    BetTauntPayload,
     MatchPayload,
     ProfileStatusPostPayload,
     ResolvePayload,
+    UpdateBetPayload,
     UpdateProfilePayload,
 )
 from app.services.shared import (
@@ -306,8 +308,102 @@ async def place_bet_v2(
     await db.refresh(user)
     return {
         "message": "Đặt cược thành công.",
+        "bet_id": bet.id,
+        "match_id": match.id,
+        "choice": bet.choice,
+        "stake": bet.stake,
         "remaining_points": user.total_points,
         "min_stake": min_stake,
         "taunt_text": taunt_text,
     }
 
+@router.patch("/api/v1/bets/{match_id}")
+async def update_bet(
+    match_id: int,
+    payload: UpdateBetPayload,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _sync_match_statuses(db)
+
+    match = (
+        await db.execute(select(Match).where(Match.id == match_id))
+    ).scalars().first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Trận đấu không tồn tại.")
+    if match.status != MatchStatus.upcoming:
+        raise HTTPException(status_code=400, detail="Trận này đã bắt đầu, không thể sửa cược.")
+
+    # Kèo chấp lẻ không có cửa hòa, kể cả khi user đang sửa cược.
+    if payload.choice == "DRAW" and match.handicap % 1 != 0:
+        raise HTTPException(status_code=400, detail="Kèo chấp lẻ không có cửa hòa.")
+
+    bet = (
+        await db.execute(
+            select(Bet).where(Bet.user_id == user.id, Bet.match_id == match_id)
+        )
+    ).scalars().first()
+    if not bet:
+        raise HTTPException(status_code=404, detail="Bạn chưa đặt cược trận này.")
+
+    bet.choice = payload.choice
+    bet.taunt_text = _normalize_optional_taunt(payload.taunt_text)
+    db.add(bet)
+
+    try:
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return {
+        "message": "Đã cập nhật cược.",
+        "bet_id": bet.id,
+        "match_id": bet.match_id,
+        "choice": bet.choice,
+        "stake": bet.stake,
+        "taunt_text": bet.taunt_text,
+    }
+
+@router.patch("/api/v1/bets/{match_id}/taunt")
+async def update_bet_taunt(
+    match_id: int,
+    payload: BetTauntPayload,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _sync_match_statuses(db)
+
+    match = (
+        await db.execute(select(Match).where(Match.id == match_id))
+    ).scalars().first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Trận đấu không tồn tại.")
+    if match.status != MatchStatus.upcoming:
+        raise HTTPException(status_code=400, detail="Trận này đã khóa sửa câu gáy.")
+
+    bet = (
+        await db.execute(
+            select(Bet).where(Bet.user_id == user.id, Bet.match_id == match_id)
+        )
+    ).scalars().first()
+    if not bet:
+        raise HTTPException(status_code=404, detail="Bạn chưa đặt cược trận này.")
+
+    bet.taunt_text = _normalize_optional_taunt(payload.taunt_text)
+    db.add(bet)
+
+    try:
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return {
+        "message": "Đã cập nhật câu gáy.",
+        "bet_id": bet.id,
+        "match_id": bet.match_id,
+        "choice": bet.choice,
+        "stake": bet.stake,
+        "taunt_text": bet.taunt_text,
+    }

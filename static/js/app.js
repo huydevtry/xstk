@@ -1,6 +1,7 @@
 // ─── State ───────────────────────────────────────────────────────────────────
 let currentUser = null;          // { email, total_points }
 let placedBets = new Set();      // match IDs đã cược trong session này
+let myBetsByMatchId = new Map();
 let matchDetailCache = new Map();
 let finishedSectionLoaded = false;
 let finishedSectionRefreshTimer = null;
@@ -163,11 +164,9 @@ function getQuoteByDetail(detail) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    fetchAppSettings();
-    fetchUserProfile();
-    fetchUpcomingMatches();
-    startTicker();
-    fetchLeaderboard();
+    initializeHomepage().catch(error => {
+        console.error("initializeHomepage error:", error);
+    });
     document.getElementById("match-detail-modal")?.addEventListener("click", e => {
         if (e.target && e.target.id === "match-detail-modal") closeMatchDetail();
     });
@@ -179,6 +178,17 @@ document.addEventListener("DOMContentLoaded", () => {
     // Refresh ticker mỗi 60 giây
     setInterval(startTicker, 60_000);
 });
+
+async function initializeHomepage() {
+    fetchAppSettings();
+    await Promise.all([
+        fetchUserProfile(),
+        fetchMyBetState(),
+    ]);
+    await fetchUpcomingMatches();
+    startTicker();
+    fetchLeaderboard();
+}
 
 async function fetchAppSettings() {
     try {
@@ -217,6 +227,34 @@ async function fetchUserProfile() {
     } catch {
         el.innerHTML = `<span class="text-red-400 font-medium">Lỗi kết nối Auth</span>`;
     }
+}
+
+async function fetchMyBetState() {
+    try {
+        const res = await fetch("/api/v1/me/bets", NO_CACHE_FETCH_OPTIONS);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const bets = await res.json();
+        myBetsByMatchId = new Map(
+            (Array.isArray(bets) ? bets : []).map(bet => [Number(bet.match_id), bet])
+        );
+        placedBets = new Set(
+            (Array.isArray(bets) ? bets : [])
+                .filter(bet => String(bet.match_status || "").toLowerCase() !== "finished")
+                .map(bet => Number(bet.match_id))
+        );
+    } catch (error) {
+        console.error("fetchMyBetState error:", error);
+    }
+}
+
+function upsertMyBetState(bet) {
+    const matchId = Number(bet?.match_id);
+    if (!Number.isFinite(matchId)) return;
+    myBetsByMatchId.set(matchId, {
+        ...myBetsByMatchId.get(matchId),
+        ...bet,
+    });
+    placedBets.add(matchId);
 }
 
 function renderUserInfo() {
@@ -412,11 +450,19 @@ function renderLatestFinishedMatch(detail) {
     } else if (myBet.outcome === "WIN") {
         outcomeBadge = `<span class="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">🏆 Thắng +${formatCoins(myBet.points_earned)}</span>`;
         cardBorderClass = "border-emerald-300";
-        myResultBlock = `<p class="text-xs text-emerald-700">Cửa: <strong>${escapeHtml(choiceLabel(myBet.choice))}</strong> · Đặt ${formatCoins(myBet.stake)} · Nhận về <strong>+${formatCoins(myBet.points_earned)}</strong></p>`;
+        myResultBlock = `<p class="text-xs text-emerald-700">Cửa: <strong>${escapeHtml(choiceLabel(myBet.choice))}</strong> · Đặt ${formatCoins(myBet.stake)} · Nhận về <strong>${escapeHtml(myBet.reward_label || formatCoins(myBet.points_earned))}</strong></p>`;
+    } else if (myBet.outcome === "HALF_WIN") {
+        outcomeBadge = `<span class="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">➗ Thắng nửa ${formatCoins(myBet.points_earned)}</span>`;
+        cardBorderClass = "border-emerald-300";
+        myResultBlock = `<p class="text-xs text-emerald-700">Cửa: <strong>${escapeHtml(choiceLabel(myBet.choice))}</strong> · Đặt ${formatCoins(myBet.stake)} · ${escapeHtml(myBet.reward_label || "")}</p>`;
     } else if (myBet.outcome === "LOSE") {
         outcomeBadge = `<span class="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600">💸 Thua</span>`;
         cardBorderClass = "border-rose-200";
         myResultBlock = `<p class="text-xs text-rose-600">Cửa: <strong>${escapeHtml(choiceLabel(myBet.choice))}</strong> · Đặt ${formatCoins(myBet.stake)} · Mất trắng</p>`;
+    } else if (myBet.outcome === "HALF_LOSE") {
+        outcomeBadge = `<span class="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">➗ Thua nửa ${formatCoins(myBet.points_earned)}</span>`;
+        cardBorderClass = "border-orange-200";
+        myResultBlock = `<p class="text-xs text-orange-700">Cửa: <strong>${escapeHtml(choiceLabel(myBet.choice))}</strong> · Đặt ${formatCoins(myBet.stake)} · ${escapeHtml(myBet.reward_label || "")}</p>`;
     } else if (myBet.outcome === "REFUND") {
         outcomeBadge = `<span class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">🔄 Hoàn điểm</span>`;
         cardBorderClass = "border-amber-200";
@@ -427,8 +473,9 @@ function renderLatestFinishedMatch(detail) {
         myResultBlock = "";
     }
 
-    const myResultBg = myBet?.outcome === "WIN" ? "bg-emerald-50 border-emerald-100"
+    const myResultBg = ["WIN", "HALF_WIN"].includes(myBet?.outcome) ? "bg-emerald-50 border-emerald-100"
         : myBet?.outcome === "LOSE" ? "bg-rose-50 border-rose-100"
+        : myBet?.outcome === "HALF_LOSE" ? "bg-orange-50 border-orange-100"
         : myBet?.outcome === "REFUND" ? "bg-amber-50 border-amber-100"
         : "bg-slate-50 border-slate-100";
 
