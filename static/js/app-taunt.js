@@ -168,6 +168,14 @@
         `);
     }
 
+    function closeBetPanel(matchId) {
+        const panel = document.getElementById(`stake-panel-${matchId}`);
+        if (!panel) return;
+        panel.innerHTML = "";
+        panel.dataset.mode = "";
+        panel.classList.add("hidden");
+    }
+
     function formatVNTime(value) {
         if (!value) return "-";
         const date = new Date(value);
@@ -603,11 +611,7 @@
     };
 
     window.closeBetEditor = function closeBetEditor(matchId) {
-        const panel = document.getElementById(`stake-panel-${matchId}`);
-        if (!panel) return;
-        panel.innerHTML = "";
-        panel.dataset.mode = "";
-        panel.classList.add("hidden");
+        closeBetPanel(matchId);
     };
 
     window.closeBetTauntEditor = window.closeBetEditor;
@@ -921,6 +925,8 @@
             setChoiceActiveState(matchId, selection.choice);
             lockPlacedBetButtons(matchId);
             ensureEditActionButton(matchId);
+            closeBetPanel(matchId);
+            delete matchSelections[matchId];
             updateDisplayedPoints(data.remaining_points);
             showToast(`Đặt cược thành công. Còn lại ${formatCoins(data.remaining_points)}.`, "success");
             matchDetailCache.delete(matchId);
