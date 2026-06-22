@@ -242,6 +242,85 @@ function renderCommunityState() {
     loadMoreBtn.textContent = communityLoading ? "Đang tải..." : "Xem thêm";
 }
 
+function communityTimelineOptions() {
+    return {
+        enableInteractions: true,
+        authorHrefBuilder(author) {
+            return author?.id ? `/profile?user_id=${encodeURIComponent(author.id)}` : null;
+        },
+    };
+}
+
+function refreshPostInteractions(postId, interactions) {
+    const article = document.querySelector(`[data-timeline-post-id="${Number(postId)}"]`);
+    const container = article?.querySelector("[data-timeline-interactions]");
+    if (!article || !container || !window.TimelineFeed?.renderInteractions) return;
+    container.outerHTML = window.TimelineFeed.renderInteractions(
+        { id: Number(postId), ...interactions },
+        communityTimelineOptions(),
+    );
+}
+
+async function togglePostLike(postId, button) {
+    if (!postId || button?.disabled) return;
+    if (button) button.disabled = true;
+    try {
+        const res = await fetch(`/api/v1/community/posts/${encodeURIComponent(postId)}/like`, {
+            method: "POST",
+            ...COMMUNITY_NO_CACHE_FETCH_OPTIONS,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `Lỗi ${res.status}`);
+        refreshPostInteractions(postId, data);
+    } catch (error) {
+        console.error("togglePostLike error:", error);
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+async function submitPostComment(postId, form) {
+    const input = form?.elements?.content;
+    const content = String(input?.value || "").trim();
+    if (!postId || !content || form?.dataset.submitting === "1") return;
+    form.dataset.submitting = "1";
+    const submitBtn = form.querySelector("button[type='submit']");
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+        const res = await fetch(`/api/v1/community/posts/${encodeURIComponent(postId)}/comments`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content }),
+            ...COMMUNITY_NO_CACHE_FETCH_OPTIONS,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `Lỗi ${res.status}`);
+        input.value = "";
+        refreshPostInteractions(postId, data);
+    } catch (error) {
+        console.error("submitPostComment error:", error);
+    } finally {
+        delete form.dataset.submitting;
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
+
+function initCommunityTimelineInteractions() {
+    const container = document.getElementById("community-timeline");
+    if (!container) return;
+    container.addEventListener("click", event => {
+        const likeBtn = event.target.closest("[data-timeline-action='like']");
+        if (!likeBtn || !container.contains(likeBtn)) return;
+        togglePostLike(Number(likeBtn.dataset.postId), likeBtn);
+    });
+    container.addEventListener("submit", event => {
+        const form = event.target.closest("[data-timeline-action='comment-form']");
+        if (!form || !container.contains(form)) return;
+        event.preventDefault();
+        submitPostComment(Number(form.dataset.postId), form);
+    });
+}
+
 async function fetchCommunityViewer() {
     const el = document.getElementById("user-info");
     const composer = document.getElementById("profile-composer-section");
@@ -286,17 +365,9 @@ async function fetchCommunityTimeline(reset = false) {
         const items = Array.isArray(data.items) ? data.items : [];
 
         if (reset) {
-            window.TimelineFeed?.render(container, items, {
-                authorHrefBuilder(author) {
-                    return author?.id ? `/profile?user_id=${encodeURIComponent(author.id)}` : null;
-                },
-            });
+            window.TimelineFeed?.render(container, items, communityTimelineOptions());
         } else {
-            window.TimelineFeed?.append(container, items, {
-                authorHrefBuilder(author) {
-                    return author?.id ? `/profile?user_id=${encodeURIComponent(author.id)}` : null;
-                },
-            });
+            window.TimelineFeed?.append(container, items, communityTimelineOptions());
         }
 
         communityNextOffset = data.next_offset ?? null;
@@ -407,6 +478,7 @@ function initCommunityComposer() {
 document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("community-load-more")?.addEventListener("click", () => fetchCommunityTimeline(false));
     initCommunityComposer();
+    initCommunityTimelineInteractions();
     initFeedMediaPicker();
     initGiphyPicker();
     fetchCommunityViewer();

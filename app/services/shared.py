@@ -31,6 +31,8 @@ from app.models import (
     Bet,
     User,
     ProfileStatusPost,
+    ProfilePostLike,
+    ProfilePostComment,
     PointTransaction,
     PointTransactionType,
     AppSetting,
@@ -85,6 +87,8 @@ MAX_PROFILE_NAME_LENGTH = 30
 MAX_TAUNT_LENGTH = 30
 
 MAX_PROFILE_STATUS_LENGTH = 160
+
+MAX_PROFILE_COMMENT_LENGTH = 280
 
 MAX_FEED_MEDIA_SIZE_BYTES = 8 * 1024 * 1024
 
@@ -198,6 +202,14 @@ def _normalize_optional_profile_status(value: Optional[str]) -> Optional[str]:
         return None
     if len(text) > MAX_PROFILE_STATUS_LENGTH:
         raise HTTPException(status_code=400, detail=f"Trạng thái tối đa {MAX_PROFILE_STATUS_LENGTH} ký tự.")
+    return text
+
+def _normalize_profile_comment(value: str) -> str:
+    text = (value or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Bình luận không được để trống.")
+    if len(text) > MAX_PROFILE_COMMENT_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Bình luận tối đa {MAX_PROFILE_COMMENT_LENGTH} ký tự.")
     return text
 
 def _normalize_timeline_limit(limit: int) -> int:
@@ -410,12 +422,24 @@ def _serialize_profile_status_media(post: ProfileStatusPost) -> Optional[dict]:
         "provider": provider,
     }
 
+def _serialize_profile_post_comment(comment: ProfilePostComment, author: User) -> dict:
+    return {
+        "id": comment.id,
+        "content": comment.content,
+        "created_at": _serialize_utc_datetime(comment.created_at),
+        "author": _user_avatar_payload(author),
+    }
+
 def _serialize_profile_status_post(
     post: ProfileStatusPost,
     *,
     author: Optional[User] = None,
     match: Optional[Match] = None,
     bet: Optional[Bet] = None,
+    like_count: int = 0,
+    viewer_liked: bool = False,
+    comment_count: int = 0,
+    comments: Optional[list[dict]] = None,
 ) -> dict:
     return {
         "id": post.id,
@@ -428,12 +452,99 @@ def _serialize_profile_status_post(
         "reaction_result": _serialize_match_reaction_result(bet=bet, match=match)
         if (post.post_type or PROFILE_POST_TYPE_TEXT) == PROFILE_POST_TYPE_MATCH_REACTION
         else None,
+        "like_count": int(like_count or 0),
+        "viewer_liked": bool(viewer_liked),
+        "comment_count": int(comment_count or 0),
+        "comments": comments or [],
     }
+
+async def _get_profile_post_interactions(
+    db: AsyncSession,
+    post_ids: list[int],
+    *,
+    viewer_user_id: Optional[UUID] = None,
+    comments_per_post: int = 3,
+) -> dict[int, dict]:
+    if not post_ids:
+        return {}
+
+    interactions = {
+        post_id: {
+            "like_count": 0,
+            "viewer_liked": False,
+            "comment_count": 0,
+            "comments": [],
+        }
+        for post_id in post_ids
+    }
+
+    like_rows = (
+        await db.execute(
+            select(ProfilePostLike.post_id, func.count(ProfilePostLike.id).label("cnt"))
+            .join(User, ProfilePostLike.user_id == User.id)
+            .where(ProfilePostLike.post_id.in_(post_ids), User.is_approved.is_(True))
+            .group_by(ProfilePostLike.post_id)
+        )
+    ).all()
+    for row in like_rows:
+        interactions[row.post_id]["like_count"] = int(row.cnt or 0)
+
+    if viewer_user_id is not None:
+        liked_post_ids = {
+            post_id
+            for post_id, in (
+                await db.execute(
+                    select(ProfilePostLike.post_id).where(
+                        ProfilePostLike.post_id.in_(post_ids),
+                        ProfilePostLike.user_id == viewer_user_id,
+                    )
+                )
+            ).all()
+        }
+        for post_id in liked_post_ids:
+            if post_id in interactions:
+                interactions[post_id]["viewer_liked"] = True
+
+    comment_count_rows = (
+        await db.execute(
+            select(ProfilePostComment.post_id, func.count(ProfilePostComment.id).label("cnt"))
+            .join(User, ProfilePostComment.user_id == User.id)
+            .where(ProfilePostComment.post_id.in_(post_ids), User.is_approved.is_(True))
+            .group_by(ProfilePostComment.post_id)
+        )
+    ).all()
+    for row in comment_count_rows:
+        interactions[row.post_id]["comment_count"] = int(row.cnt or 0)
+
+    comment_rows = (
+        await db.execute(
+            select(ProfilePostComment, User)
+            .join(User, ProfilePostComment.user_id == User.id)
+            .where(ProfilePostComment.post_id.in_(post_ids), User.is_approved.is_(True))
+            .order_by(
+                ProfilePostComment.post_id.asc(),
+                ProfilePostComment.created_at.desc(),
+                ProfilePostComment.id.desc(),
+            )
+        )
+    ).all()
+    comments_by_post: dict[int, list[dict]] = {post_id: [] for post_id in post_ids}
+    for row in comment_rows:
+        post_comments = comments_by_post.setdefault(row.ProfilePostComment.post_id, [])
+        if len(post_comments) >= comments_per_post:
+            continue
+        post_comments.append(_serialize_profile_post_comment(row.ProfilePostComment, row.User))
+
+    for post_id, comments in comments_by_post.items():
+        interactions[post_id]["comments"] = list(reversed(comments))
+
+    return interactions
 
 async def _list_profile_status_posts(
     db: AsyncSession,
     *,
     user_id: Optional[UUID] = None,
+    viewer_user_id: Optional[UUID] = None,
     offset: int = 0,
     limit: int = DEFAULT_PROFILE_TIMELINE_PAGE_SIZE,
 ) -> dict:
@@ -460,12 +571,18 @@ async def _list_profile_status_posts(
     )
     rows = (await db.execute(query)).all()
     page_rows = rows[:safe_limit]
+    interactions = await _get_profile_post_interactions(
+        db,
+        [row.ProfileStatusPost.id for row in page_rows],
+        viewer_user_id=viewer_user_id,
+    )
     items = [
         _serialize_profile_status_post(
             row.ProfileStatusPost,
             author=row.User,
             match=row.Match,
             bet=row.Bet,
+            **interactions.get(row.ProfileStatusPost.id, {}),
         )
         for row in page_rows
     ]
@@ -479,11 +596,13 @@ async def _get_profile_status_timeline(
     db: AsyncSession,
     user_id: UUID,
     *,
+    viewer_user_id: Optional[UUID] = None,
     limit: int = MAX_PROFILE_TIMELINE_ITEMS,
 ) -> list[dict]:
     page = await _list_profile_status_posts(
         db,
         user_id=user_id,
+        viewer_user_id=viewer_user_id,
         offset=0,
         limit=min(limit, MAX_PROFILE_TIMELINE_ITEMS),
     )
@@ -1606,7 +1725,7 @@ async def _build_profile_payload(
         "can_edit": True,
     }
     if db is not None:
-        payload["status_timeline"] = await _get_profile_status_timeline(db, user.id)
+        payload["status_timeline"] = await _get_profile_status_timeline(db, user.id, viewer_user_id=user.id)
         if payload["status_timeline"]:
             payload["profile_status"] = payload["status_timeline"][0]["content"]
         payload["features"] = await _get_feature_settings(db)

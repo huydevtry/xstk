@@ -79,6 +79,23 @@
         return `${Number(value || 0).toLocaleString()}đ`;
     }
 
+    function renderComment(comment) {
+        const author = comment?.author || {};
+        const authorName = escapeHtml(author.display_name || author.name || "Người dùng");
+        return `
+            <div class="flex gap-2">
+                ${renderAvatar(author).replaceAll("h-10 w-10", "h-8 w-8").replaceAll("text-xs", "text-[10px]")}
+                <div class="min-w-0 flex-1 rounded-2xl bg-slate-50 px-3 py-2">
+                    <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span class="text-xs font-bold text-slate-900">${authorName}</span>
+                        <span class="text-[10px] text-slate-400">${escapeHtml(formatTime(comment?.created_at))}</span>
+                    </div>
+                    <div class="mt-1 whitespace-pre-wrap break-words text-sm leading-5 text-slate-700">${escapeHtml(comment?.content || "")}</div>
+                </div>
+            </div>
+        `;
+    }
+
     function renderReactionResult(result) {
         if (!result?.outcome) return "";
         if (result.outcome === "win" || result.outcome === "half_win") {
@@ -133,6 +150,56 @@
         return hrefBuilder(author);
     }
 
+    function renderInteractions(item, options = {}) {
+        if (!options.enableInteractions) return "";
+        const postId = item?.id ?? item?.post_id;
+        if (!postId) return "";
+        const likeCount = Number(item?.like_count || 0);
+        const commentCount = Number(item?.comment_count || 0);
+        const viewerLiked = Boolean(item?.viewer_liked);
+        const comments = Array.isArray(item?.comments) ? item.comments : [];
+        const likeClasses = viewerLiked
+            ? "border-rose-200 bg-rose-50 text-rose-700"
+            : "border-slate-200 bg-white text-slate-600 hover:border-rose-200 hover:text-rose-600";
+
+        return `
+            <div class="mt-4 border-t border-slate-100 pt-3" data-timeline-interactions>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button
+                        type="button"
+                        class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition ${likeClasses}"
+                        data-timeline-action="like"
+                        data-post-id="${escapeHtml(postId)}"
+                        aria-pressed="${viewerLiked ? "true" : "false"}"
+                    >
+                        <span aria-hidden="true">${viewerLiked ? "♥" : "♡"}</span>
+                        <span>${viewerLiked ? "Đã thích" : "Thích"}</span>
+                        <span>${likeCount}</span>
+                    </button>
+                    <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-500">
+                        ${commentCount} bình luận
+                    </span>
+                </div>
+                <div class="mt-3 space-y-2" data-timeline-comments>
+                    ${comments.map(renderComment).join("")}
+                </div>
+                <form class="mt-3 flex gap-2" data-timeline-action="comment-form" data-post-id="${escapeHtml(postId)}">
+                    <input
+                        name="content"
+                        type="text"
+                        maxlength="280"
+                        autocomplete="off"
+                        class="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-300"
+                        placeholder="Viết bình luận..."
+                    >
+                    <button type="submit" class="rounded-2xl bg-slate-900 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-700">
+                        Gửi
+                    </button>
+                </form>
+            </div>
+        `;
+    }
+
     function createTimelineItemHtml(item, options = {}) {
         const author = item?.author || {};
         const authorHref = buildAuthorHref(author, options);
@@ -147,7 +214,7 @@
             : "";
 
         return `
-            <article class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+            <article class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm" data-timeline-post-id="${escapeHtml(item?.id ?? "")}">
                 <div class="flex items-start justify-between gap-3">
                     ${authorNode}
                 </div>
@@ -155,6 +222,7 @@
                 ${renderMedia(item?.media)}
                 ${item?.post_type === "match_reaction" ? renderReactionResult(item?.reaction_result) : ""}
                 ${renderMatchSummary(item?.match)}
+                ${renderInteractions(item, options)}
             </article>
         `;
     }
@@ -173,5 +241,6 @@
         render,
         append,
         createTimelineItemHtml,
+        renderInteractions,
     };
 })();

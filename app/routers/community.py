@@ -5,6 +5,7 @@ from app.schemas.payloads import (
     AdminUserPointsPayload,
     BetPayload,
     MatchPayload,
+    ProfileCommentPayload,
     ProfileStatusPostPayload,
     ResolvePayload,
     UpdateProfilePayload,
@@ -51,6 +52,8 @@ from app.services.shared import (
     _serialize_profile_status_match,
     _serialize_match_reaction_result,
     _serialize_profile_status_post,
+    _get_profile_post_interactions,
+    _normalize_profile_comment,
     _list_profile_status_posts,
     _get_profile_status_timeline,
     _create_profile_status_post,
@@ -134,6 +137,8 @@ from app.services.shared import (
     Bet,
     User,
     ProfileStatusPost,
+    ProfilePostLike,
+    ProfilePostComment,
     PointTransaction,
     PointTransactionType,
     AppSetting,
@@ -152,5 +157,74 @@ async def get_community_timeline(
     offset: int = Query(0, ge=0),
     limit: int = Query(DEFAULT_PROFILE_TIMELINE_PAGE_SIZE, ge=1, le=MAX_PROFILE_TIMELINE_PAGE_SIZE),
 ):
-    return await _list_profile_status_posts(db, offset=offset, limit=limit)
+    return await _list_profile_status_posts(db, viewer_user_id=user.id, offset=offset, limit=limit)
 
+async def _get_public_profile_post(db: AsyncSession, post_id: int) -> ProfileStatusPost:
+    post = (
+        await db.execute(
+            select(ProfileStatusPost)
+            .join(User, ProfileStatusPost.user_id == User.id)
+            .where(ProfileStatusPost.id == post_id, User.is_approved.is_(True))
+        )
+    ).scalars().first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Bài viết không tồn tại.")
+    return post
+
+async def _profile_post_interaction_payload(db: AsyncSession, post_id: int, user: User) -> dict:
+    interactions = await _get_profile_post_interactions(db, [post_id], viewer_user_id=user.id)
+    return {
+        "post_id": post_id,
+        "id": post_id,
+        **interactions.get(post_id, {
+            "like_count": 0,
+            "viewer_liked": False,
+            "comment_count": 0,
+            "comments": [],
+        }),
+    }
+
+@router.post("/api/v1/community/posts/{post_id}/like")
+async def toggle_community_post_like(
+    post_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_public_profile_post(db, post_id)
+    existing = (
+        await db.execute(
+            select(ProfilePostLike).where(
+                ProfilePostLike.post_id == post_id,
+                ProfilePostLike.user_id == user.id,
+            )
+        )
+    ).scalars().first()
+
+    if existing:
+        await db.delete(existing)
+    else:
+        db.add(ProfilePostLike(post_id=post_id, user_id=user.id))
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+
+    return await _profile_post_interaction_payload(db, post_id, user)
+
+@router.post("/api/v1/community/posts/{post_id}/comments", status_code=201)
+async def create_community_post_comment(
+    post_id: int,
+    payload: ProfileCommentPayload,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_public_profile_post(db, post_id)
+    comment = ProfilePostComment(
+        post_id=post_id,
+        user_id=user.id,
+        content=_normalize_profile_comment(payload.content),
+    )
+    db.add(comment)
+    await db.commit()
+    return await _profile_post_interaction_payload(db, post_id, user)

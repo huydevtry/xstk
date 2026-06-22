@@ -4,7 +4,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 from app.models import MatchStatus
-from app.services.shared import MAX_HOMEPAGE_ANNOUNCEMENT_LENGTH, MAX_PROFILE_STATUS_LENGTH
+from app.services.shared import MAX_HOMEPAGE_ANNOUNCEMENT_LENGTH, MAX_PROFILE_COMMENT_LENGTH, MAX_PROFILE_STATUS_LENGTH
 
 class BetPayload(BaseModel):
     match_id: int
@@ -52,3 +52,6 @@ class ProfileStatusPostPayload(BaseModel):
     match_id: Optional[int] = None
     external_media_url: Optional[str] = Field(default=None, max_length=2000)
     external_media_provider: Optional[str] = Field(default=None, max_length=50)
+
+class ProfileCommentPayload(BaseModel):
+    content: str = Field(..., min_length=1, max_length=MAX_PROFILE_COMMENT_LENGTH)

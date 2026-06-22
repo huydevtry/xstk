@@ -169,7 +169,13 @@ async def get_public_user_timeline(
     limit: int = Query(DEFAULT_PROFILE_TIMELINE_PAGE_SIZE, ge=1, le=MAX_PROFILE_TIMELINE_PAGE_SIZE),
 ):
     target_user = await _get_user_by_id(db, user_id)
-    return await _list_profile_status_posts(db, user_id=target_user.id, offset=offset, limit=limit)
+    return await _list_profile_status_posts(
+        db,
+        user_id=target_user.id,
+        viewer_user_id=current_user.id,
+        offset=offset,
+        limit=limit,
+    )
 
 @router.get("/api/v1/users/{user_id}/bets")
 async def get_public_user_bets(
@@ -200,4 +206,3 @@ async def get_public_user_bets(
         )
         for row in rows
     ]
-

@@ -79,6 +79,28 @@ class ProfileStatusPost(Base):
     created_at = Column(DateTime, default=_utc_now_naive, nullable=False, index=True)
 
 
+class ProfilePostLike(Base):
+    __tablename__ = "profile_post_likes"
+    __table_args__ = (
+        UniqueConstraint("post_id", "user_id", name="uq_profile_post_likes_post_user"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    post_id = Column(Integer, ForeignKey("profile_status_posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime, default=_utc_now_naive, nullable=False, index=True)
+
+
+class ProfilePostComment(Base):
+    __tablename__ = "profile_post_comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    post_id = Column(Integer, ForeignKey("profile_status_posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    content = Column(String, nullable=False)
+    created_at = Column(DateTime, default=_utc_now_naive, nullable=False, index=True)
+
+
 class Match(Base):
     __tablename__ = "matches"
 

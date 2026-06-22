@@ -200,7 +200,7 @@ async def get_my_timeline(
     offset: int = Query(0, ge=0),
     limit: int = Query(DEFAULT_PROFILE_TIMELINE_PAGE_SIZE, ge=1, le=MAX_PROFILE_TIMELINE_PAGE_SIZE),
 ):
-    return await _list_profile_status_posts(db, user_id=user.id, offset=offset, limit=limit)
+    return await _list_profile_status_posts(db, user_id=user.id, viewer_user_id=user.id, offset=offset, limit=limit)
 
 @router.get("/api/v1/me/point-transactions")
 async def get_my_point_transactions(
@@ -243,7 +243,7 @@ async def update_me(
         "initials": (display_name[:2]).upper(),
         "default_taunt": user.default_taunt,
         "profile_status": user.profile_status,
-        "status_timeline": await _get_profile_status_timeline(db, user.id),
+        "status_timeline": await _get_profile_status_timeline(db, user.id, viewer_user_id=user.id),
     }
 
 @router.post("/api/v1/me/update")
@@ -275,7 +275,7 @@ async def update_me_v2(
         "initials": _user_initials(user),
         "default_taunt": user.default_taunt,
         "profile_status": user.profile_status,
-        "status_timeline": await _get_profile_status_timeline(db, user.id),
+        "status_timeline": await _get_profile_status_timeline(db, user.id, viewer_user_id=user.id),
     }
 
 @router.post("/api/v1/me/statuses", status_code=201)
@@ -335,7 +335,7 @@ async def create_profile_status(
 
     return {
         "status_post": _serialize_profile_status_post(post, author=user, match=match, bet=bet_record),
-        "status_timeline": await _get_profile_status_timeline(db, user.id),
+        "status_timeline": await _get_profile_status_timeline(db, user.id, viewer_user_id=user.id),
         "profile_status": user.profile_status,
     }
 
