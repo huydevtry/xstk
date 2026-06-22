@@ -313,23 +313,30 @@
     font-weight: 400;
 }
 
+.match-handicap-row {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+}
+
 .match-handicap-info {
     position: relative;
     text-align: center;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     font-weight: 700;
     letter-spacing: 0.01em;
     margin-bottom: 8px;
-    padding: 5px 10px;
+    padding: 5px 9px;
     border-radius: 999px;
     background: linear-gradient(90deg, #eff6ff 0%, #dbeafe 50%, #eff6ff 100%);
     border: 1px solid #93c5fd;
     color: #1e40af;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
-    width: 100%;
+    width: fit-content;
+    max-width: 100%;
     box-sizing: border-box;
     cursor: help;
     outline: none;
@@ -532,6 +539,9 @@
 }
 
 .taunt-slot-compact .taunt-bubble {
+    flex: 0 1 auto;
+    width: fit-content;
+    max-width: 100%;
     min-height: 0;
     height: 24px;
     border-radius: 999px;
@@ -550,6 +560,7 @@
 
 .taunt-slot-compact .taunt-text {
     display: block;
+    max-width: 100%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -772,6 +783,44 @@
     letter-spacing: -0.02em;
 }
 
+@media (min-width: 1024px) {
+    .home-main {
+        width: min(100% - 32px, 1180px);
+    }
+
+    .match-list-wide > div {
+        width: 100%;
+    }
+
+    .match-list-wide [id^="content-"] > .bg-white {
+        padding: 18px 20px;
+    }
+
+    .match-list-wide .pool-block {
+        padding: 9px 14px;
+    }
+
+    .match-list-wide .bet-btn-group {
+        gap: 10px;
+    }
+
+    .match-list-wide .bet-choice-block {
+        gap: 5px;
+    }
+
+    .match-list-wide .match-handicap-info {
+        max-width: min(760px, 82%);
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+}
+
+@media (min-width: 1536px) {
+    .home-main {
+        width: min(100% - 48px, 1360px);
+    }
+}
+
 @media (max-width: 480px) {
     .bet-btn-group {
         gap: 5px;
@@ -821,6 +870,11 @@
     .match-time-block {
         font-size: 0.66rem;
         padding: 3px 8px;
+    }
+
+    .match-handicap-info {
+        display: flex;
+        width: 100%;
     }
 
     .pool-side-amt {

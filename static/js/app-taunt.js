@@ -599,9 +599,11 @@
                     </div>
                 </div>
 
-                <div class="match-handicap-info" tabindex="0" data-tooltip="${escapeAttr(handicapTooltip)}">
-                    <span class="match-handicap-icon">i</span>
-                    <span>${handicapText}</span>
+                <div class="match-handicap-row">
+                    <div class="match-handicap-info" tabindex="0" data-tooltip="${escapeAttr(handicapTooltip)}">
+                        <span class="match-handicap-icon">i</span>
+                        <span>${handicapText}</span>
+                    </div>
                 </div>
 
                 ${renderPoolBlock(id, total_pool, stakes_home, stakes_draw, stakes_away, isOddHandicap)}
