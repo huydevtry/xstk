@@ -153,11 +153,14 @@ async def get_leaderboard(
 ):
     """Paginated leaderboard với badges tự động và trend indicator."""
     total_users = (
-        await db.execute(select(func.count()).select_from(User))
+        await db.execute(
+            select(func.count()).select_from(User).where(User.is_approved.is_(True))
+        )
     ).scalar_one()
 
     users_q = (
         select(User)
+        .where(User.is_approved.is_(True))
         .order_by(desc(User.total_points))
         .offset(offset)
         .limit(limit)
@@ -168,7 +171,9 @@ async def get_leaderboard(
     since = _utc_now_naive() - timedelta(hours=24)
     trend_q = (
         select(Bet.user_id, func.sum(Bet.points_earned).label("earned_24h"))
+        .join(User, Bet.user_id == User.id)
         .where(Bet.created_at >= since, Bet.points_earned > 0)
+        .where(User.is_approved.is_(True))
         .group_by(Bet.user_id)
     )
     trend_rows = (await db.execute(trend_q)).all()
@@ -189,7 +194,9 @@ async def get_leaderboard(
     # Đơn giản hơn: lấy bets gần nhất của mỗi user
     all_bets_q = (
         select(Bet.user_id, Bet.points_earned, Bet.created_at)
+        .join(User, Bet.user_id == User.id)
         .where(Bet.points_earned.is_not(None))
+        .where(User.is_approved.is_(True))
         .order_by(Bet.user_id, desc(Bet.created_at))
     )
     all_bets = (await db.execute(all_bets_q)).all()
@@ -217,13 +224,17 @@ async def get_leaderboard(
             Bet.choice,
             Bet.points_earned,
         )
+        .join(User, Bet.user_id == User.id)
         .where(Bet.points_earned > 0)
+        .where(User.is_approved.is_(True))
     )
     contrarian_bets = (await db.execute(contrarian_q)).all()
 
     # Đếm số người đặt mỗi cửa của mỗi trận
     choice_count_q = (
         select(Bet.match_id, Bet.choice, func.count(Bet.id).label("cnt"))
+        .join(User, Bet.user_id == User.id)
+        .where(User.is_approved.is_(True))
         .group_by(Bet.match_id, Bet.choice)
     )
     choice_counts = (await db.execute(choice_count_q)).all()
@@ -280,4 +291,3 @@ async def get_leaderboard(
         "next_offset": next_offset if next_offset < total_users else None,
         "total": total_users,
     }
-

@@ -157,6 +157,8 @@ async def get_upcoming_matches(db: AsyncSession = Depends(get_db)):
             func.sum(case((Bet.choice == "AWAY", Bet.stake), else_=0)).label("stakes_away"),
             func.sum(Bet.stake).label("total_pool"),
         )
+        .join(User, Bet.user_id == User.id)
+        .where(User.is_approved.is_(True))
         .group_by(Bet.match_id)
         .subquery()
     )
@@ -165,6 +167,8 @@ async def get_upcoming_matches(db: AsyncSession = Depends(get_db)):
             Bet.match_id.label("match_id"),
             func.min(Bet.stake).label("min_stake"),
         )
+        .join(User, Bet.user_id == User.id)
+        .where(User.is_approved.is_(True))
         .group_by(Bet.match_id)
         .subquery()
     )
@@ -213,7 +217,7 @@ async def get_match_bets(match_id: int, db: AsyncSession = Depends(get_db)):
     query = (
         select(Bet, User)
         .join(User, Bet.user_id == User.id)
-        .where(Bet.match_id == match_id)
+        .where(Bet.match_id == match_id, User.is_approved.is_(True))
         .order_by(Bet.created_at.asc())
     )
     rows = (await db.execute(query)).all()
@@ -283,6 +287,7 @@ async def get_activity_feed(db: AsyncSession = Depends(get_db)):
         select(Bet, User, Match)
         .join(User, Bet.user_id == User.id)
         .join(Match, Bet.match_id == Match.id)
+        .where(User.is_approved.is_(True))
         .order_by(desc(Bet.created_at))
         .limit(20)
     )
@@ -327,7 +332,7 @@ async def get_match_bets_v2(match_id: int, db: AsyncSession = Depends(get_db)):
     query = (
         select(Bet, User)
         .join(User, Bet.user_id == User.id)
-        .where(Bet.match_id == match_id)
+        .where(Bet.match_id == match_id, User.is_approved.is_(True))
         .order_by(Bet.created_at.desc())
     )
     rows = (await db.execute(query)).all()
@@ -353,4 +358,3 @@ async def get_match_bets_v2(match_id: int, db: AsyncSession = Depends(get_db)):
         )
 
     return result
-

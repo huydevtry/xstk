@@ -448,6 +448,7 @@ async def _list_profile_status_posts(
             (ProfileStatusPost.user_id == Bet.user_id)
             & (ProfileStatusPost.match_id == Bet.match_id),
         )
+        .where(User.is_approved.is_(True))
     )
     if user_id is not None:
         query = query.where(ProfileStatusPost.user_id == user_id)
@@ -904,7 +905,11 @@ async def _get_user_by_id(db: AsyncSession, user_id: str) -> User:
     except ValueError:
         raise HTTPException(status_code=404, detail="Người dùng không tồn tại.")
 
-    user = (await db.execute(select(User).where(User.id == parsed_id))).scalars().first()
+    user = (
+        await db.execute(
+            select(User).where(User.id == parsed_id, User.is_approved.is_(True))
+        )
+    ).scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="Người dùng không tồn tại.")
     return user
@@ -1225,7 +1230,9 @@ def _user_badge_payload(
 async def _build_user_badge_for_profile(user: User, db: AsyncSession) -> Optional[dict]:
     ordered_ids = (
         await db.execute(
-            select(User.id).order_by(desc(User.total_points), User.id.asc())
+            select(User.id)
+            .where(User.is_approved.is_(True))
+            .order_by(desc(User.total_points), User.id.asc())
         )
     ).scalars().all()
     total_users = len(ordered_ids)
@@ -1269,7 +1276,9 @@ async def _build_user_badge_for_profile(user: User, db: AsyncSession) -> Optiona
         counts = (
             await db.execute(
                 select(Bet.choice, func.count(Bet.id).label("cnt"))
+                .join(User, Bet.user_id == User.id)
                 .where(Bet.match_id == bet.match_id)
+                .where(User.is_approved.is_(True))
                 .group_by(Bet.choice)
             )
         ).all()
@@ -1441,7 +1450,7 @@ async def _build_match_detail_payload(
     query = (
         select(Bet, User)
         .join(User, Bet.user_id == User.id)
-        .where(Bet.match_id == match.id)
+        .where(Bet.match_id == match.id, User.is_approved.is_(True))
         .order_by(Bet.created_at.asc())
     )
     rows = (await db.execute(query)).all()
