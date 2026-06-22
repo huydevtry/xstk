@@ -280,6 +280,25 @@
     border-color: #38bdf8;
 }
 
+.match-team-logo-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    min-height: 40px;
+}
+
+.match-team-logo {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    object-fit: cover;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1);
+}
+
 .live-dot {
     width: 8px;
     height: 8px;
@@ -794,6 +813,17 @@
 
     .match-list-wide [id^="content-"] > .bg-white {
         padding: 18px 20px;
+    }
+
+    .match-list-wide .match-team-logo-wrap {
+        margin-bottom: 10px;
+        min-height: 72px;
+    }
+
+    .match-list-wide .match-team-logo {
+        width: 72px;
+        height: 72px;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
     }
 
     .match-list-wide .pool-block {

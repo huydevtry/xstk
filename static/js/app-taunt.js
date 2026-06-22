@@ -546,8 +546,8 @@
                 <div id="stake-panel-${id}" class="hidden"></div>
             `;
 
-        const homeIconHtml = homeIconSrc ? `<img src="${homeIconSrc}" class="w-5 h-5 inline-block rounded-full border border-slate-200 bg-white">` : "";
-        const awayIconHtml = awayIconSrc ? `<img src="${awayIconSrc}" class="w-5 h-5 inline-block rounded-full border border-slate-200 bg-white">` : "";
+        const homeIconHtml = homeIconSrc ? `<img src="${homeIconSrc}" class="match-team-logo" alt="">` : "";
+        const awayIconHtml = awayIconSrc ? `<img src="${awayIconSrc}" class="match-team-logo" alt="">` : "";
         const liveBadge = isLive ? `
             <span class="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-600">
                 <span class="live-dot"></span>
@@ -587,13 +587,13 @@
 
                 <div class="flex items-center justify-between my-2 px-1">
                     <div class="w-2/5 text-center flex flex-col items-center">
-                        <div class="flex items-center justify-center mb-1">${homeIconHtml}</div>
+                        <div class="match-team-logo-wrap">${homeIconHtml}</div>
                         <p class="text-[13px] font-bold text-slate-900 truncate w-full">${homeTeam}</p>
                         <span class="text-[10px] text-slate-500 block mt-0.5">Chủ nhà</span>
                     </div>
                     <div class="w-1/5 text-center text-slate-400 font-black text-xs">VS</div>
                     <div class="w-2/5 text-center flex flex-col items-center">
-                        <div class="flex items-center justify-center mb-1">${awayIconHtml}</div>
+                        <div class="match-team-logo-wrap">${awayIconHtml}</div>
                         <p class="text-[13px] font-bold text-slate-900 truncate w-full">${awayTeam}</p>
                         <span class="text-[10px] text-slate-500 block mt-0.5">Khách</span>
                     </div>

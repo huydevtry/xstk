@@ -844,8 +844,9 @@ function renderMatchCard(match) {
             <div class="mt-2 text-center text-[11px] text-slate-500">${escapeHtml(minStakeHint)}</div>
             <div id="stake-panel-${id}" class="hidden"></div>`;
 
-    const homeIconHtml = homeIconSrc ? `<img src="${homeIconSrc}" class="w-6 h-6 inline-block mr-2 rounded-full border border-slate-200 bg-white">` : "";
-    const awayIconHtml = awayIconSrc ? `<img src="${awayIconSrc}" class="w-6 h-6 inline-block ml-2 rounded-full border border-slate-200 bg-white">` : "";
+    const teamLogoClass = "h-10 w-10 rounded-full border border-slate-200 bg-white object-cover shadow-sm md:h-14 md:w-14 lg:h-16 lg:w-16";
+    const homeIconHtml = homeIconSrc ? `<img src="${homeIconSrc}" class="${teamLogoClass}" alt="">` : "";
+    const awayIconHtml = awayIconSrc ? `<img src="${awayIconSrc}" class="${teamLogoClass}" alt="">` : "";
     const liveBadge = isLive ? `
         <span class="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-600">
             <span class="h-2 w-2 rounded-full bg-rose-500 animate-pulse"></span>
@@ -872,13 +873,13 @@ function renderMatchCard(match) {
 
             <div class="flex items-center justify-between my-3 px-2">
                 <div class="w-2/5 text-center flex flex-col items-center">
-                    <div class="flex items-center justify-center mb-1">${homeIconHtml}</div>
+                    <div class="flex items-center justify-center mb-2 md:mb-3">${homeIconHtml}</div>
                     <p class="text-sm font-bold text-slate-900 truncate w-full">${homeTeam} ${hcBadge}</p>
                     <span class="text-xs text-slate-500 block mt-0.5">Chủ nhà</span>
                 </div>
                 <div class="w-1/5 text-center text-slate-400 font-black text-sm">VS</div>
                 <div class="w-2/5 text-center flex flex-col items-center">
-                    <div class="flex items-center justify-center mb-1">${awayIconHtml}</div>
+                    <div class="flex items-center justify-center mb-2 md:mb-3">${awayIconHtml}</div>
                     <p class="text-sm font-bold text-slate-900 truncate w-full">${awayTeam}</p>
                     <span class="text-xs text-slate-500 block mt-0.5">Khách</span>
                 </div>
