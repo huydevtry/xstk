@@ -315,6 +315,7 @@ async def place_bet_v2(
         "remaining_points": user.total_points,
         "min_stake": min_stake,
         "taunt_text": taunt_text,
+        "can_edit_stake": True,
     }
 
 @router.patch("/api/v1/bets/{match_id}")
@@ -348,14 +349,62 @@ async def update_bet(
 
     bet.choice = payload.choice
     bet.taunt_text = _normalize_optional_taunt(payload.taunt_text)
-    db.add(bet)
 
     try:
+        bet_count = (
+            await db.execute(select(func.count(Bet.id)).where(Bet.match_id == match_id))
+        ).scalar_one()
+        can_edit_stake = bet_count == 1
+        if payload.stake is not None and payload.stake != bet.stake:
+            if not can_edit_stake:
+                raise HTTPException(status_code=400, detail="Đã có người khác cược trận này, không thể sửa tiền cược.")
+
+            stake_delta = int(payload.stake) - int(bet.stake)
+            if stake_delta > 0:
+                balance_update = await db.execute(
+                    update(User)
+                    .where(User.id == user.id, User.total_points >= stake_delta)
+                    .values(total_points=User.total_points - stake_delta)
+                    .execution_options(synchronize_session=False)
+                )
+                if balance_update.rowcount != 1:
+                    await db.rollback()
+                    raise HTTPException(status_code=400, detail="Số điểm không đủ.")
+                user.total_points -= stake_delta
+                transaction_type = PointTransactionType.bet_stake
+                transaction_description = f"Tăng tiền cược: {match.home_team} vs {match.away_team}"
+            else:
+                refund_points = abs(stake_delta)
+                await db.execute(
+                    update(User)
+                    .where(User.id == user.id)
+                    .values(total_points=User.total_points + refund_points)
+                    .execution_options(synchronize_session=False)
+                )
+                user.total_points += refund_points
+                transaction_type = PointTransactionType.bet_refund
+                transaction_description = f"Giảm tiền cược: {match.home_team} vs {match.away_team}"
+
+            bet.stake = int(payload.stake)
+            await _record_point_transaction(
+                db,
+                user=user,
+                delta_points=-stake_delta,
+                transaction_type=transaction_type,
+                description=transaction_description,
+                bet=bet,
+                match=match,
+            )
+
+        db.add(bet)
         await db.commit()
+    except HTTPException:
+        raise
     except Exception as exc:
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(exc))
 
+    await db.refresh(user)
     return {
         "message": "Đã cập nhật cược.",
         "bet_id": bet.id,
@@ -363,6 +412,8 @@ async def update_bet(
         "choice": bet.choice,
         "stake": bet.stake,
         "taunt_text": bet.taunt_text,
+        "remaining_points": user.total_points,
+        "can_edit_stake": can_edit_stake,
     }
 
 @router.patch("/api/v1/bets/{match_id}/taunt")

@@ -176,6 +176,18 @@
     font-weight: 700;
 }
 
+.bet-edit-stake-row {
+    display: grid;
+    grid-template-columns: 1fr minmax(90px, 120px);
+    align-items: center;
+    gap: 10px;
+    margin-top: 9px;
+}
+
+.bet-edit-stake-input {
+    width: 100%;
+}
+
 .bet-editor-close {
     border: 1px solid #e2e8f0;
     background: #ffffff;

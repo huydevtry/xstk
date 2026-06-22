@@ -17,6 +17,7 @@ class BetTauntPayload(BaseModel):
 
 class UpdateBetPayload(BaseModel):
     choice: Literal["HOME", "DRAW", "AWAY"]
+    stake: Optional[int] = Field(default=None, ge=1)
     taunt_text: Optional[str] = None
 
 class ResolvePayload(BaseModel):

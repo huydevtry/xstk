@@ -395,10 +395,21 @@ async def get_my_bets(user: User = Depends(get_current_user), db: AsyncSession =
         .order_by(Bet.created_at.desc())
     )
     rows = (await db.execute(query)).all()
+    match_ids = [row.Match.id for row in rows]
+    bet_counts = {}
+    if match_ids:
+        count_rows = (
+            await db.execute(
+                select(Bet.match_id, func.count(Bet.id))
+                .where(Bet.match_id.in_(match_ids))
+                .group_by(Bet.match_id)
+            )
+        ).all()
+        bet_counts = {match_id: count for match_id, count in count_rows}
     reacted_match_ids = await _get_match_reaction_match_ids(
         db,
         user_id=user.id,
-        match_ids=[row.Match.id for row in rows],
+        match_ids=match_ids,
     )
     return [
         _serialize_bet_history_entry(
@@ -406,6 +417,7 @@ async def get_my_bets(user: User = Depends(get_current_user), db: AsyncSession =
             match=row.Match,
             can_share_reaction=_match_result_published(row.Match) and row.Match.id not in reacted_match_ids,
             has_shared_reaction=row.Match.id in reacted_match_ids,
+            can_edit_stake=row.Match.status == MatchStatus.upcoming and bet_counts.get(row.Match.id, 0) == 1,
         )
         for row in rows
     ]

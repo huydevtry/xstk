@@ -176,6 +176,45 @@
         panel.classList.add("hidden");
     }
 
+    function sumStake(entries) {
+        return (entries || []).reduce((total, entry) => total + Number(entry.stake || 0), 0);
+    }
+
+    function updateMatchCardBetTotals(matchId, data) {
+        const match = matchCardsById.get(Number(matchId));
+        if (!match || !data) return;
+
+        const stakesHome = sumStake(data.HOME);
+        const stakesDraw = sumStake(data.DRAW);
+        const stakesAway = sumStake(data.AWAY);
+        const totalPool = stakesHome + stakesDraw + stakesAway;
+        match.stakes_home = stakesHome;
+        match.stakes_draw = stakesDraw;
+        match.stakes_away = stakesAway;
+        match.total_pool = totalPool;
+        match.min_stake = totalPool > 0 ? Math.min(
+            ...["HOME", "DRAW", "AWAY"]
+                .flatMap(choice => data[choice] || [])
+                .map(entry => Number(entry.stake || 0))
+                .filter(value => value > 0)
+        ) : null;
+
+        const isOddHandicap = isTwoWayHandicap(match.handicap);
+        const poolBlock = document.getElementById(`pool-block-${matchId}`);
+        if (poolBlock) {
+            poolBlock.outerHTML = renderPoolBlock(matchId, totalPool, stakesHome, stakesDraw, stakesAway, isOddHandicap);
+        }
+
+        [
+            ["home", stakesHome],
+            ["draw", stakesDraw],
+            ["away", stakesAway],
+        ].forEach(([choiceId, stake]) => {
+            const amount = document.getElementById(`choice-amount-${choiceId}-${matchId}`);
+            if (amount) amount.textContent = formatCoins(stake);
+        });
+    }
+
     function formatVNTime(value) {
         if (!value) return "-";
         const date = new Date(value);
@@ -320,7 +359,7 @@
         tauntRotators.set(key, { timeout });
     }
 
-    function renderPoolBlock(totalPool, stakesHome, stakesDraw, stakesAway, isOddHandicap) {
+    function renderPoolBlock(matchId, totalPool, stakesHome, stakesDraw, stakesAway, isOddHandicap) {
         const pool = Number(totalPool) || 0;
         const home = Number(stakesHome) || 0;
         const draw = Number(stakesDraw) || 0;
@@ -328,7 +367,7 @@
 
         if (pool === 0) {
             return `
-                <div class="pool-block pool-block-empty">
+                <div class="pool-block pool-block-empty" id="pool-block-${matchId}">
                     <span class="pool-empty-icon">Pool</span>
                     <span class="pool-empty-text">Chưa có ai góp quỹ, vào trước để mở pool.</span>
                 </div>`;
@@ -362,7 +401,7 @@
             </div>`;
 
         return `
-            <div class="pool-block">
+            <div class="pool-block" id="pool-block-${matchId}">
                 <div class="pool-total-row">
                     <span class="pool-total-label">tổng quỹ</span>
                     <span class="pool-total-amount">${formatCoins(pool)}</span>
@@ -378,7 +417,7 @@
         const choiceId = choice.toLowerCase();
         const avatars = `<div class="avatar-stack-row" id="avatars-${choiceId}-${matchId}"></div>`;
         const tauntSlot = `<div class="taunt-slot taunt-slot-compact" id="taunt-${choiceId}-${matchId}"></div>`;
-        const choiceAmount = `<span class="bet-choice-amount">${formatCoins(stakeValue)}</span>`;
+        const choiceAmount = `<span class="bet-choice-amount" id="choice-amount-${choiceId}-${matchId}">${formatCoins(stakeValue)}</span>`;
         const isSelected = selectedChoice === choice;
 
         if (clickable) {
@@ -424,6 +463,7 @@
                 if (!slot) return;
                 renderAvatarStack(slot, data[choice] || []);
             });
+            updateMatchCardBetTotals(matchId, data);
         } catch (error) {
             // Non-critical UI.
         }
@@ -564,7 +604,7 @@
                     <span>${handicapText}</span>
                 </div>
 
-                ${renderPoolBlock(total_pool, stakes_home, stakes_draw, stakes_away, isOddHandicap)}
+                ${renderPoolBlock(id, total_pool, stakes_home, stakes_draw, stakes_away, isOddHandicap)}
 
                 ${betArea}
             </div>
@@ -633,9 +673,28 @@
         const match = matchCardsById.get(Number(matchId)) || {};
         const tauntText = String(bet.taunt_text || "");
         const selectedChoice = betEditSelections.get(Number(matchId)) || bet.choice;
+        const canEditStake = Boolean(bet.can_edit_stake);
+        const maxEditableStake = Number(bet.stake || 0) + (currentUser ? Number(currentUser.total_points || 0) : 0);
         const choiceButtons = allowedChoicesForMatch(match)
             .map(choice => renderBetEditChoiceButton(matchId, choice, choice === selectedChoice))
             .join("");
+        const stakeEditor = canEditStake
+            ? `
+                <div class="bet-edit-stake-row">
+                    <label for="edit-stake-${matchId}">Tiền cược</label>
+                    <input
+                        type="number"
+                        class="stake-input bet-edit-stake-input"
+                        id="edit-stake-${matchId}"
+                        min="1"
+                        max="${maxEditableStake}"
+                        step="1"
+                        value="${Number(bet.stake || 0)}"
+                    >
+                </div>
+                <div class="bet-editor-meta">Chỉ sửa được khi bạn là người duy nhất đã cược trận này.</div>
+            `
+            : `<div class="bet-editor-meta">Stake giữ nguyên ${formatCoins(bet.stake)} vì đã có người khác cược.</div>`;
 
         betEditSelections.set(Number(matchId), selectedChoice);
         panel.dataset.mode = "edit-bet";
@@ -645,7 +704,7 @@
                 <div class="bet-editor-head">
                     <div>
                         <label>Sửa cược</label>
-                        <div class="bet-editor-meta">Stake giữ nguyên ${formatCoins(bet.stake)}</div>
+                        ${!canEditStake ? "" : `<div class="bet-editor-meta">Có thể sửa stake vì trận chưa có người khác cược.</div>`}
                     </div>
                     <button
                         type="button"
@@ -656,6 +715,7 @@
                     </button>
                 </div>
                 <div class="bet-edit-choice-grid">${choiceButtons}</div>
+                ${stakeEditor}
                 <div class="mt-2">
                     <textarea
                         id="taunt-${matchId}"
@@ -709,8 +769,18 @@
 
         const match = matchCardsById.get(Number(matchId)) || {};
         const selectedChoice = betEditSelections.get(Number(matchId)) || existingBet.choice;
+        const stakeInput = document.getElementById(`edit-stake-${matchId}`);
+        const nextStake = stakeInput ? (parseInt(stakeInput.value || "0", 10) || 0) : Number(existingBet.stake || 0);
         if (!allowedChoicesForMatch(match).includes(selectedChoice)) {
             showToast("Cửa cược không hợp lệ cho kèo này.", "error");
+            return;
+        }
+        if (stakeInput && nextStake < 1) {
+            showToast("Tiền cược phải lớn hơn 0.", "error");
+            return;
+        }
+        if (stakeInput && currentUser && nextStake > Number(existingBet.stake || 0) + Number(currentUser.total_points || 0)) {
+            showToast("Số điểm không đủ.", "error");
             return;
         }
 
@@ -729,6 +799,7 @@
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     choice: selectedChoice,
+                    stake: stakeInput ? nextStake : undefined,
                     taunt_text: tauntText || null,
                 }),
             });
@@ -745,10 +816,15 @@
                 ...data,
                 match_id: Number(matchId),
                 choice: data.choice || selectedChoice,
+                stake: data.stake ?? nextStake,
                 taunt_text: data.taunt_text ?? null,
                 can_edit_taunt: true,
+                can_edit_stake: Boolean(data.can_edit_stake),
                 match_status: "upcoming",
             });
+            if (data.remaining_points !== undefined) {
+                updateDisplayedPoints(data.remaining_points);
+            }
             setChoiceActiveState(matchId, data.choice || selectedChoice);
             matchDetailCache.delete(matchId);
             window.MatchDetailModal?.resetCache?.();
@@ -921,6 +997,7 @@
                 taunt_text: data.taunt_text ?? (tauntText || null),
                 match_status: "upcoming",
                 can_edit_taunt: true,
+                can_edit_stake: Boolean(data.can_edit_stake ?? true),
             });
             setChoiceActiveState(matchId, selection.choice);
             lockPlacedBetButtons(matchId);

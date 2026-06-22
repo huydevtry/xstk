@@ -1175,6 +1175,7 @@ def _serialize_bet_history_entry(
     match: Match,
     can_share_reaction: bool,
     has_shared_reaction: bool,
+    can_edit_stake: bool = False,
 ) -> dict:
     outcome = _derive_bet_outcome(match, bet)
     return {
@@ -1199,6 +1200,7 @@ def _serialize_bet_history_entry(
         "created_at": _serialize_utc_datetime(bet.created_at),
         "result_published": _match_result_published(match),
         "can_edit_taunt": match.status == MatchStatus.upcoming,
+        "can_edit_stake": can_edit_stake,
         "can_share_reaction": can_share_reaction,
         "has_shared_reaction": has_shared_reaction,
     }
