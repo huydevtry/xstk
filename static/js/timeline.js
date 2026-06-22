@@ -37,12 +37,17 @@
         });
     }
 
-    function renderAvatar(author) {
+    function renderAvatarWithClasses(author, sizeClass = "h-10 w-10", textClass = "text-xs", extraClass = "") {
         const avatarSrc = safeImageSrc(author?.avatar_url);
+        const common = `${sizeClass} rounded-full border border-slate-200 flex-shrink-0 ${extraClass}`.trim();
         if (avatarSrc) {
-            return `<img src="${avatarSrc}" alt="" class="h-10 w-10 rounded-full border border-slate-200 object-cover flex-shrink-0">`;
+            return `<img src="${avatarSrc}" alt="" class="${common} object-cover">`;
         }
-        return `<span class="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-xs font-black text-white flex-shrink-0" style="background:${safeCssColor(author?.avatar_color)}">${escapeHtml(author?.initials || "??")}</span>`;
+        return `<span class="flex ${common} items-center justify-center ${textClass} font-black text-white" style="background:${safeCssColor(author?.avatar_color)}">${escapeHtml(author?.initials || "??")}</span>`;
+    }
+
+    function renderAvatar(author) {
+        return renderAvatarWithClasses(author);
     }
 
     function renderMatchSummary(match) {
@@ -84,7 +89,7 @@
         const authorName = escapeHtml(author.display_name || author.name || "Người dùng");
         return `
             <div class="flex gap-2">
-                ${renderAvatar(author).replaceAll("h-10 w-10", "h-8 w-8").replaceAll("text-xs", "text-[10px]")}
+                ${renderAvatarWithClasses(author, "h-8 w-8", "text-[10px]")}
                 <div class="min-w-0 flex-1 rounded-2xl bg-slate-50 px-3 py-2">
                     <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span class="text-xs font-bold text-slate-900">${authorName}</span>
@@ -150,6 +155,53 @@
         return hrefBuilder(author);
     }
 
+    function renderLikedUserRow(user) {
+        const name = escapeHtml(user?.display_name || user?.name || "Người dùng");
+        return `
+            <div class="flex min-w-0 items-center gap-2">
+                ${renderAvatarWithClasses(user, "h-7 w-7", "text-[9px]")}
+                <span class="truncate text-xs font-semibold text-slate-700">${name}</span>
+            </div>
+        `;
+    }
+
+    function renderLikeAvatarStack(likedUsers, likeCount) {
+        if (!likeCount) return "";
+        const users = Array.isArray(likedUsers) ? likedUsers : [];
+        const previewUsers = users.slice(0, 6);
+        const hiddenCount = Math.max(0, likeCount - previewUsers.length);
+        const fullList = users.map(renderLikedUserRow).join("");
+        const hiddenBubble = hiddenCount > 0
+            ? `
+                <div class="group relative -ml-1.5 inline-flex">
+                    <span class="flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-white bg-slate-100 px-1.5 text-[10px] font-black text-slate-600 shadow-sm">
+                        +${hiddenCount}
+                    </span>
+                    <div class="absolute bottom-full left-0 z-30 mb-2 hidden w-64 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl group-hover:block">
+                        <div class="mb-2 text-[11px] font-bold uppercase text-slate-400">${likeCount} người đã thích</div>
+                        <div class="max-h-60 space-y-2 overflow-y-auto">
+                            ${fullList}
+                        </div>
+                    </div>
+                </div>
+            `
+            : "";
+
+        return `
+            <div class="flex min-w-0 items-center gap-2" data-timeline-likes>
+                <div class="flex min-w-0 items-center pl-1.5">
+                    ${previewUsers.map(user => `
+                        <div class="-ml-1.5" title="${escapeHtml(user?.display_name || user?.name || "Người dùng")}">
+                            ${renderAvatarWithClasses(user, "h-6 w-6", "text-[8px]", "border-2 border-white shadow-sm")}
+                        </div>
+                    `).join("")}
+                    ${hiddenBubble}
+                </div>
+                <span class="truncate text-xs font-semibold text-slate-500">${likeCount} lượt thích</span>
+            </div>
+        `;
+    }
+
     function renderInteractions(item, options = {}) {
         if (!options.enableInteractions) return "";
         const postId = item?.id ?? item?.post_id;
@@ -157,25 +209,29 @@
         const likeCount = Number(item?.like_count || 0);
         const commentCount = Number(item?.comment_count || 0);
         const viewerLiked = Boolean(item?.viewer_liked);
+        const likedUsers = Array.isArray(item?.liked_users) ? item.liked_users : [];
         const comments = Array.isArray(item?.comments) ? item.comments : [];
         const likeClasses = viewerLiked
-            ? "border-rose-200 bg-rose-50 text-rose-700"
-            : "border-slate-200 bg-white text-slate-600 hover:border-rose-200 hover:text-rose-600";
+            ? "border-rose-200 bg-rose-50 text-rose-600"
+            : "border-slate-200 bg-white text-slate-500 hover:border-rose-200 hover:text-rose-500";
 
         return `
             <div class="mt-4 border-t border-slate-100 pt-3" data-timeline-interactions>
-                <div class="flex flex-wrap items-center gap-2">
-                    <button
-                        type="button"
-                        class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition ${likeClasses}"
-                        data-timeline-action="like"
-                        data-post-id="${escapeHtml(postId)}"
-                        aria-pressed="${viewerLiked ? "true" : "false"}"
-                    >
-                        <span aria-hidden="true">${viewerLiked ? "♥" : "♡"}</span>
-                        <span>${viewerLiked ? "Đã thích" : "Thích"}</span>
-                        <span>${likeCount}</span>
-                    </button>
+                <div class="flex items-center justify-between gap-3">
+                    <div class="flex min-w-0 items-center gap-2">
+                        <button
+                            type="button"
+                            class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border text-lg leading-none transition ${likeClasses}"
+                            data-timeline-action="like"
+                            data-post-id="${escapeHtml(postId)}"
+                            aria-pressed="${viewerLiked ? "true" : "false"}"
+                            aria-label="${viewerLiked ? "Bỏ thích" : "Thích"}"
+                            title="${viewerLiked ? "Bỏ thích" : "Thích"}"
+                        >
+                            <span aria-hidden="true">${viewerLiked ? "♥" : "♡"}</span>
+                        </button>
+                        ${renderLikeAvatarStack(likedUsers, likeCount)}
+                    </div>
                     <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-500">
                         ${commentCount} bình luận
                     </span>

@@ -179,6 +179,7 @@ async def _profile_post_interaction_payload(db: AsyncSession, post_id: int, user
         **interactions.get(post_id, {
             "like_count": 0,
             "viewer_liked": False,
+            "liked_users": [],
             "comment_count": 0,
             "comments": [],
         }),

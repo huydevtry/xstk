@@ -438,6 +438,7 @@ def _serialize_profile_status_post(
     bet: Optional[Bet] = None,
     like_count: int = 0,
     viewer_liked: bool = False,
+    liked_users: Optional[list[dict]] = None,
     comment_count: int = 0,
     comments: Optional[list[dict]] = None,
 ) -> dict:
@@ -454,6 +455,7 @@ def _serialize_profile_status_post(
         else None,
         "like_count": int(like_count or 0),
         "viewer_liked": bool(viewer_liked),
+        "liked_users": liked_users or [],
         "comment_count": int(comment_count or 0),
         "comments": comments or [],
     }
@@ -472,6 +474,7 @@ async def _get_profile_post_interactions(
         post_id: {
             "like_count": 0,
             "viewer_liked": False,
+            "liked_users": [],
             "comment_count": 0,
             "comments": [],
         }
@@ -488,6 +491,19 @@ async def _get_profile_post_interactions(
     ).all()
     for row in like_rows:
         interactions[row.post_id]["like_count"] = int(row.cnt or 0)
+
+    liked_user_rows = (
+        await db.execute(
+            select(ProfilePostLike.post_id, ProfilePostLike.created_at, User)
+            .join(User, ProfilePostLike.user_id == User.id)
+            .where(ProfilePostLike.post_id.in_(post_ids), User.is_approved.is_(True))
+            .order_by(ProfilePostLike.post_id.asc(), ProfilePostLike.created_at.desc())
+        )
+    ).all()
+    for row in liked_user_rows:
+        user_payload = _user_avatar_payload(row.User)
+        user_payload["liked_at"] = _serialize_utc_datetime(row.created_at)
+        interactions[row.post_id]["liked_users"].append(user_payload)
 
     if viewer_user_id is not None:
         liked_post_ids = {
