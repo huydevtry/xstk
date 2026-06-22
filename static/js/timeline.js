@@ -14,6 +14,8 @@
     function safeImageSrc(value) {
         const src = String(value ?? "").trim();
         if (!src) return "";
+        const flagMatch = src.match(/flagcdn\.com\/(?:[a-z0-9]+\/)?([a-z0-9-]+)\.(?:png|webp|jpg|jpeg|svg)/i);
+        if (flagMatch) return escapeHtml(`https://flagcdn.com/w320/${flagMatch[1].toLowerCase()}.webp`);
         if (src.startsWith("/") || /^https?:\/\//i.test(src)) return escapeHtml(src);
         return "";
     }
@@ -53,11 +55,11 @@
     function renderMatchSummary(match) {
         if (!match?.id) return "";
         const homeIcon = safeImageSrc(match.home_icon)
-            ? `<img src="${safeImageSrc(match.home_icon)}" alt="" class="h-5 w-5 rounded-full border border-slate-200 object-cover">`
-            : `<span class="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-[9px] font-black text-slate-500">${escapeHtml(String(match.home_team || "?").slice(0, 1).toUpperCase())}</span>`;
+            ? `<img src="${safeImageSrc(match.home_icon)}" alt="" class="h-4 w-6 rounded-none border border-slate-200 bg-white object-contain">`
+            : `<span class="inline-flex h-4 w-6 items-center justify-center rounded-none border border-slate-200 bg-slate-100 text-[9px] font-black text-slate-500">${escapeHtml(String(match.home_team || "?").slice(0, 1).toUpperCase())}</span>`;
         const awayIcon = safeImageSrc(match.away_icon)
-            ? `<img src="${safeImageSrc(match.away_icon)}" alt="" class="h-5 w-5 rounded-full border border-slate-200 object-cover">`
-            : `<span class="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-[9px] font-black text-slate-500">${escapeHtml(String(match.away_team || "?").slice(0, 1).toUpperCase())}</span>`;
+            ? `<img src="${safeImageSrc(match.away_icon)}" alt="" class="h-4 w-6 rounded-none border border-slate-200 bg-white object-contain">`
+            : `<span class="inline-flex h-4 w-6 items-center justify-center rounded-none border border-slate-200 bg-slate-100 text-[9px] font-black text-slate-500">${escapeHtml(String(match.away_team || "?").slice(0, 1).toUpperCase())}</span>`;
         const score = match.result_published || String(match.status || "").toLowerCase() === "finished"
             ? `${Number(match.home_score ?? 0)} - ${Number(match.away_score ?? 0)}`
             : "vs";

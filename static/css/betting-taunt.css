@@ -285,17 +285,17 @@
     align-items: center;
     justify-content: center;
     margin-bottom: 8px;
-    min-height: 40px;
+    min-height: 30px;
 }
 
 .match-team-logo {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 30px;
     flex: 0 0 auto;
-    border-radius: 999px;
+    border-radius: 0;
     border: 1px solid #e2e8f0;
     background: #ffffff;
-    object-fit: cover;
+    object-fit: contain;
     box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1);
 }
 
@@ -817,12 +817,12 @@
 
     .match-list-wide .match-team-logo-wrap {
         margin-bottom: 10px;
-        min-height: 72px;
+        min-height: 54px;
     }
 
     .match-list-wide .match-team-logo {
-        width: 72px;
-        height: 72px;
+        width: 80px;
+        height: 54px;
         box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
     }
 

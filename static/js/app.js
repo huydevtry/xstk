@@ -42,6 +42,8 @@ function escapeHtml(value) {
 function safeImageSrc(value) {
     const src = String(value ?? "").trim();
     if (!src) return "";
+    const flagMatch = src.match(/flagcdn\.com\/(?:[a-z0-9]+\/)?([a-z0-9-]+)\.(?:png|webp|jpg|jpeg|svg)/i);
+    if (flagMatch) return escapeHtml(`https://flagcdn.com/w320/${flagMatch[1].toLowerCase()}.webp`);
     if (src.startsWith("/") || /^https?:\/\//i.test(src)) return escapeHtml(src);
     return "";
 }
@@ -844,7 +846,7 @@ function renderMatchCard(match) {
             <div class="mt-2 text-center text-[11px] text-slate-500">${escapeHtml(minStakeHint)}</div>
             <div id="stake-panel-${id}" class="hidden"></div>`;
 
-    const teamLogoClass = "h-10 w-10 rounded-full border border-slate-200 bg-white object-cover shadow-sm md:h-14 md:w-14 lg:h-16 lg:w-16";
+    const teamLogoClass = "h-8 w-12 rounded-none border border-slate-200 bg-white object-contain shadow-sm md:h-12 md:w-16 lg:h-14 lg:w-20";
     const homeIconHtml = homeIconSrc ? `<img src="${homeIconSrc}" class="${teamLogoClass}" alt="">` : "";
     const awayIconHtml = awayIconSrc ? `<img src="${awayIconSrc}" class="${teamLogoClass}" alt="">` : "";
     const liveBadge = isLive ? `

@@ -34,6 +34,8 @@ function escapeHtml(value) {
 function normalizeImageSrc(value) {
     const src = String(value ?? "").trim();
     if (!src) return "";
+    const flagMatch = src.match(/flagcdn\.com\/(?:[a-z0-9]+\/)?([a-z0-9-]+)\.(?:png|webp|jpg|jpeg|svg)/i);
+    if (flagMatch) return `https://flagcdn.com/w320/${flagMatch[1].toLowerCase()}.webp`;
     if (src.startsWith("/") || /^https?:\/\//i.test(src)) return src;
     return "";
 }
@@ -471,10 +473,10 @@ function renderHistoryList() {
 
     listEl.innerHTML = profileBets.map(bet => {
         const homeIcon = safeImageSrc(bet.home_icon)
-            ? `<img src="${safeImageSrc(bet.home_icon)}" alt="" class="h-5 w-5 rounded-full border border-slate-200 object-cover">`
+            ? `<img src="${safeImageSrc(bet.home_icon)}" alt="" class="h-4 w-6 rounded-none border border-slate-200 bg-white object-contain">`
             : "";
         const awayIcon = safeImageSrc(bet.away_icon)
-            ? `<img src="${safeImageSrc(bet.away_icon)}" alt="" class="h-5 w-5 rounded-full border border-slate-200 object-cover">`
+            ? `<img src="${safeImageSrc(bet.away_icon)}" alt="" class="h-4 w-6 rounded-none border border-slate-200 bg-white object-contain">`
             : "";
         const canShare = Boolean(profileData?.can_edit) && Boolean(bet.can_share_reaction);
         return `

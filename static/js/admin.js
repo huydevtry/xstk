@@ -15,7 +15,7 @@ const state = {
 };
 
 const MATCH_DEFAULT_DURATION_MINUTES = 120;
-const FLAG_CDN_PREFIX = "https://flagcdn.com/128x96/";
+const FLAG_CDN_PREFIX = "https://flagcdn.com/w320/";
 const APP_TIME_ZONE = "Asia/Ho_Chi_Minh";
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -42,8 +42,16 @@ function escapeHtml(value) {
 function safeImageSrc(value) {
     const src = String(value ?? "").trim();
     if (!src) return "";
+    const flagSrc = normalizeFlagCdnUrl(src);
+    if (flagSrc) return escapeHtml(flagSrc);
     if (src.startsWith("/") || /^https?:\/\//i.test(src)) return escapeHtml(src);
     return "";
+}
+
+function normalizeFlagCdnUrl(value) {
+    const match = String(value ?? "").trim().match(/flagcdn\.com\/(?:[a-z0-9]+\/)?([a-z0-9-]+)\.(?:png|webp|jpg|jpeg|svg)/i);
+    if (!match) return "";
+    return buildFlagUrl(match[1]);
 }
 
 function normalizeCountryCode(value) {
@@ -100,12 +108,12 @@ function renderCountryNameDatalist() {
 function extractCountryCode(value) {
     const src = String(value ?? "").trim();
     if (!src) return "";
-    const direct = src.match(/flagcdn\.com\/128x96\/([a-z0-9-]+)\.png/i);
+    const direct = src.match(/flagcdn\.com\/(?:[a-z0-9]+\/)?([a-z0-9-]+)\.(?:png|webp|jpg|jpeg|svg)/i);
     if (direct) return direct[1].toUpperCase();
     try {
         const url = new URL(src);
         const filename = url.pathname.split("/").filter(Boolean).pop() || "";
-        const code = filename.replace(/\.png$/i, "");
+        const code = filename.replace(/\.(?:png|webp|jpg|jpeg|svg)$/i, "");
         return /^[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(code) ? code.toUpperCase() : "";
     } catch {
         return "";
@@ -114,7 +122,7 @@ function extractCountryCode(value) {
 
 function buildFlagUrl(countryCode) {
     const code = normalizeCountryCode(countryCode).toLowerCase();
-    return code ? `${FLAG_CDN_PREFIX}${code}.png` : "";
+    return code ? `${FLAG_CDN_PREFIX}${code}.webp` : "";
 }
 
 function safeCssColor(value) {
@@ -933,7 +941,7 @@ function resolveForm(match) {
 
 function teamLabel(name, icon) {
     const iconSrc = safeImageSrc(icon);
-    const iconHtml = iconSrc ? `<img src="${iconSrc}" alt="" class="inline-block h-6 w-6 rounded-full border border-slate-700 object-cover align-middle">` : "";
+    const iconHtml = iconSrc ? `<img src="${iconSrc}" alt="" class="inline-block h-4 w-6 rounded-none border border-slate-700 bg-white object-contain align-middle">` : "";
     return `${iconHtml}<span class="align-middle">${escapeHtml(name)}</span>`;
 }
 
