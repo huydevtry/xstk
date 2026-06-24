@@ -1,210 +1,338 @@
 /**
  * push-notifications.js
  *
- * Handles browser-side push notification subscription lifecycle:
- *  - Check browser support
- *  - Request permission
- *  - Subscribe to push with VAPID public key
- *  - POST/DELETE subscription to backend
- *  - Update UI button state
+ * Responsibilities:
+ *  1. Register Service Worker
+ *  2. Auto-request notification permission + subscribe on first load
+ *  3. Push toggle button in user menu (on/off + pill label)
+ *  4. Notification inbox bell: fetch list, show badge, open/close panel
  */
 
 (function () {
   'use strict';
 
-  const API_BASE = '/api/v1/push';
-  let _vapidPublicKey = null;
+  const API_PUSH   = '/api/v1/push';
+  const API_NOTIF  = '/api/v1/notifications';
+  const LOG  = (...a) => console.info('[Push]',  ...a);
+  const WARN = (...a) => console.warn('[Push]',  ...a);
+  const ERR  = (...a) => console.error('[Push]', ...a);
 
-  // ---------------------------------------------------------------------------
-  // Utility: convert base64url to Uint8Array (required by PushManager)
-  // ---------------------------------------------------------------------------
-  function urlBase64ToUint8Array(base64String) {
-    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-    const rawData = atob(base64);
-    return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+  let _vapidKey = null;
+  let _swReg    = null;
+
+  // -------------------------------------------------------------------------
+  // Utilities
+  // -------------------------------------------------------------------------
+  function urlBase64ToUint8Array(b64) {
+    const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+    const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
   }
 
-  // ---------------------------------------------------------------------------
-  // Fetch VAPID public key from server (cached after first call)
-  // ---------------------------------------------------------------------------
-  async function getVapidPublicKey() {
-    if (_vapidPublicKey) return _vapidPublicKey;
-    const res = await fetch(`${API_BASE}/vapid-public-key`);
-    if (!res.ok) throw new Error('Push notifications not configured on server.');
-    const data = await res.json();
-    _vapidPublicKey = data.public_key;
-    return _vapidPublicKey;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Check if push is supported by this browser
-  // ---------------------------------------------------------------------------
   function isPushSupported() {
     return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
   }
 
-  // ---------------------------------------------------------------------------
-  // Get current push subscription (or null)
-  // ---------------------------------------------------------------------------
-  async function getCurrentSubscription() {
-    const reg = await navigator.serviceWorker.ready;
+  function timeAgo(isoStr) {
+    if (!isoStr) return '';
+    const diff = Date.now() - new Date(isoStr + 'Z').getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1)  return 'Vừa xong';
+    if (m < 60) return `${m} phút trước`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h} giờ trước`;
+    return `${Math.floor(h / 24)} ngày trước`;
+  }
+
+  // -------------------------------------------------------------------------
+  // Service Worker
+  // -------------------------------------------------------------------------
+  async function registerSW() {
+    if (_swReg) return _swReg;
+    _swReg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    LOG('SW registered.');
+    return _swReg;
+  }
+
+  async function getVapidKey() {
+    if (_vapidKey) return _vapidKey;
+    const res = await fetch(`${API_PUSH}/vapid-public-key`);
+    if (!res.ok) throw new Error(`VAPID key endpoint: ${res.status}`);
+    _vapidKey = (await res.json()).public_key;
+    return _vapidKey;
+  }
+
+  async function getCurrentSub() {
+    const reg = _swReg || await navigator.serviceWorker.ready;
     return reg.pushManager.getSubscription();
   }
 
-  // ---------------------------------------------------------------------------
-  // Subscribe: request permission → PushManager.subscribe → POST to server
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Subscribe / Unsubscribe
+  // -------------------------------------------------------------------------
   async function enablePush() {
-    if (!isPushSupported()) {
-      alert('Trình duyệt của bạn không hỗ trợ push notification.');
-      return false;
-    }
+    if (!isPushSupported()) return false;
 
-    // Request notification permission
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      console.warn('[Push] Permission denied.');
-      return false;
-    }
+    LOG('Requesting permission…');
+    const perm = await Notification.requestPermission();
+    LOG('Permission:', perm);
+    if (perm !== 'granted') return false;
 
     try {
-      const publicKey = await getVapidPublicKey();
-      const reg = await navigator.serviceWorker.ready;
+      const key = await getVapidKey();
+      const reg = _swReg || await navigator.serviceWorker.ready;
 
-      const subscription = await reg.pushManager.subscribe({
+      const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey),
+        applicationServerKey: urlBase64ToUint8Array(key),
       });
 
-      const keys = subscription.toJSON().keys || {};
-      const res = await fetch(`${API_BASE}/subscribe`, {
-        method: 'POST',
+      const keys = sub.toJSON().keys || {};
+      const res  = await fetch(`${API_PUSH}/subscribe`, {
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          endpoint: subscription.endpoint,
-          p256dh: keys.p256dh,
-          auth: keys.auth,
+        body:    JSON.stringify({
+          endpoint:   sub.endpoint,
+          p256dh:     keys.p256dh,
+          auth:       keys.auth,
           user_agent: navigator.userAgent,
         }),
       });
-
-      if (!res.ok) throw new Error('Server rejected subscription.');
-      console.info('[Push] Subscribed successfully.');
+      if (!res.ok) throw new Error(`Subscribe rejected: ${res.status}`);
+      LOG('Subscribed OK.');
       return true;
     } catch (err) {
-      console.error('[Push] Subscribe failed:', err);
+      ERR('enablePush failed:', err);
       return false;
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Unsubscribe: PushManager.unsubscribe → DELETE from server
-  // ---------------------------------------------------------------------------
   async function disablePush() {
     try {
-      const subscription = await getCurrentSubscription();
-      if (!subscription) return true;
-
-      await fetch(`${API_BASE}/unsubscribe`, {
-        method: 'DELETE',
+      const sub = await getCurrentSub();
+      if (!sub) return true;
+      await fetch(`${API_PUSH}/unsubscribe`, {
+        method:  'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ endpoint: subscription.endpoint }),
+        body:    JSON.stringify({ endpoint: sub.endpoint }),
       });
-
-      await subscription.unsubscribe();
-      console.info('[Push] Unsubscribed.');
+      await sub.unsubscribe();
+      LOG('Unsubscribed.');
       return true;
     } catch (err) {
-      console.error('[Push] Unsubscribe failed:', err);
+      ERR('disablePush failed:', err);
       return false;
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Update button UI based on current state
-  // ---------------------------------------------------------------------------
-  async function _updateButtonUI(btn) {
-    if (!btn) return;
+  // -------------------------------------------------------------------------
+  // Push toggle pill in user menu
+  // -------------------------------------------------------------------------
+  async function updateTogglePill() {
+    const pill = document.getElementById('push-toggle-label');
+    const btn  = document.getElementById('push-toggle-btn');
+    if (!pill) return;
+
     if (!isPushSupported()) {
-      btn.style.display = 'none';
+      pill.textContent = 'Không hỗ trợ';
+      pill.className   = 'push-toggle-pill off';
+      if (btn) btn.disabled = true;
       return;
     }
 
-    const permission = Notification.permission;
-    const sub = await getCurrentSubscription();
-    const slash = document.getElementById('push-bell-slash');
+    const perm = Notification.permission;
+    const sub  = await getCurrentSub();
 
-    if (permission === 'denied') {
-      btn.setAttribute('data-push-state', 'denied');
-      btn.title = 'Thông báo bị chặn trong cài đặt trình duyệt';
-      btn.classList.remove('text-sky-600', 'border-sky-300');
-      btn.classList.add('text-slate-300', 'border-slate-200', 'opacity-50', 'cursor-not-allowed');
-      // Show slash through bell
-      if (slash) slash.setAttribute('stroke-dasharray', '30');
+    if (perm === 'denied') {
+      pill.textContent = 'Bị chặn';
+      pill.className   = 'push-toggle-pill denied';
+      if (btn) btn.disabled = true;
     } else if (sub) {
-      btn.setAttribute('data-push-state', 'enabled');
-      btn.title = 'Tắt thông báo';
-      btn.classList.remove('text-slate-400', 'border-slate-200', 'opacity-50', 'cursor-not-allowed');
-      btn.classList.add('text-sky-600', 'border-sky-300');
-      // No slash — bell is active
-      if (slash) slash.setAttribute('stroke-dasharray', '0');
+      pill.textContent = 'BẬT';
+      pill.className   = 'push-toggle-pill on';
     } else {
-      btn.setAttribute('data-push-state', 'disabled');
-      btn.title = 'Bật thông báo';
-      btn.classList.remove('text-sky-600', 'border-sky-300', 'opacity-50', 'cursor-not-allowed');
-      btn.classList.add('text-slate-400', 'border-slate-200');
-      // Show slash through bell
-      if (slash) slash.setAttribute('stroke-dasharray', '30');
+      pill.textContent = 'TẮT';
+      pill.className   = 'push-toggle-pill off';
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Toggle handler attached to the bell button
-  // ---------------------------------------------------------------------------
-  async function handlePushToggle(btn) {
-    const state = btn.getAttribute('data-push-state');
-    btn.disabled = true;
+  async function handlePushToggle() {
+    const sub = await getCurrentSub();
+    const btn = document.getElementById('push-toggle-btn');
+    if (btn) btn.disabled = true;
 
-    if (state === 'enabled') {
+    if (sub) {
       await disablePush();
-    } else if (state === 'disabled') {
+    } else {
       await enablePush();
     }
 
-    btn.disabled = false;
-    await _updateButtonUI(btn);
+    if (btn) btn.disabled = false;
+    await updateTogglePill();
   }
 
-  // ---------------------------------------------------------------------------
-  // Init — register SW + wire up button
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Notification inbox
+  // -------------------------------------------------------------------------
+  let _notifOpen = false;
+
+  async function loadNotifications() {
+    const list  = document.getElementById('notif-list');
+    const badge = document.getElementById('notif-badge');
+    if (!list) return;
+
+    try {
+      const res  = await fetch(API_NOTIF, { credentials: 'include', cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // Update badge
+      if (badge) {
+        if (data.unread_count > 0) {
+          badge.textContent = data.unread_count > 99 ? '99+' : data.unread_count;
+          badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
+        }
+      }
+
+      // Render list
+      if (!data.notifications || data.notifications.length === 0) {
+        list.innerHTML = '<p class="notif-empty">Chưa có thông báo nào</p>';
+        return;
+      }
+
+      list.innerHTML = data.notifications.map(n => {
+        const icon = _iconForTitle(n.title);
+        return `
+          <a href="${n.url || '/'}" class="notif-item${n.is_read ? '' : ' unread'}" data-id="${n.id}">
+            <div class="notif-item-icon">${icon}</div>
+            <div class="notif-item-body">
+              <div class="notif-item-title">${_esc(n.title)}</div>
+              <div class="notif-item-text">${_esc(n.body)}</div>
+              <div class="notif-item-time">${timeAgo(n.created_at)}</div>
+            </div>
+            ${n.is_read ? '' : '<div class="notif-unread-dot"></div>'}
+          </a>`;
+      }).join('');
+
+    } catch (err) {
+      WARN('loadNotifications failed:', err);
+    }
+  }
+
+  function _iconForTitle(title) {
+    if (!title) return '🔔';
+    if (title.includes('🏆') || title.includes('Kết quả')) return '🏆';
+    if (title.includes('❤️') || title.includes('thích'))    return '❤️';
+    if (title.includes('💬') || title.includes('Bình luận')) return '💬';
+    if (title.includes('😢') || title.includes('Thua'))     return '😢';
+    if (title.includes('🤝') || title.includes('hòa'))      return '🤝';
+    return '🔔';
+  }
+
+  function _esc(str) {
+    if (!str) return '';
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function openNotifPanel() {
+    const panel = document.getElementById('notif-panel');
+    if (!panel) return;
+    panel.classList.remove('hidden');
+    _notifOpen = true;
+    loadNotifications();
+  }
+
+  function closeNotifPanel() {
+    const panel = document.getElementById('notif-panel');
+    if (!panel) return;
+    panel.classList.add('hidden');
+    _notifOpen = false;
+  }
+
+  function toggleNotifPanel() {
+    if (_notifOpen) closeNotifPanel();
+    else openNotifPanel();
+  }
+
+  async function markAllRead() {
+    await fetch(`${API_NOTIF}/read-all`, { method: 'POST', credentials: 'include' });
+    await loadNotifications();  // refresh badge + list
+  }
+
+  // -------------------------------------------------------------------------
+  // Init
+  // -------------------------------------------------------------------------
   async function initPushNotifications() {
+    LOG('Init. Push supported:', isPushSupported());
     if (!isPushSupported()) return;
 
-    // Register service worker if not already registered
+    // 1. Register SW
     try {
-      await navigator.serviceWorker.register('/static/sw.js', { scope: '/' });
+      await registerSW();
+      await navigator.serviceWorker.ready;
+      LOG('SW ready.');
     } catch (err) {
-      console.warn('[SW] Registration failed:', err);
+      ERR('SW registration failed:', err);
       return;
     }
 
-    // Wire up bell button if present
-    const btn = document.getElementById('push-toggle-btn');
-    if (btn) {
-      await _updateButtonUI(btn);
-      btn.addEventListener('click', () => handlePushToggle(btn));
+    // 2. Wire up push toggle in user menu
+    const toggleBtn = document.getElementById('push-toggle-btn');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', handlePushToggle);
+    }
+    await updateTogglePill();
+
+    // 3. Wire up notification inbox bell
+    const bellBtn     = document.getElementById('notif-bell-btn');
+    const readAllBtn  = document.getElementById('notif-read-all');
+    const wrap        = document.getElementById('notif-wrap');
+
+    if (bellBtn) bellBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleNotifPanel(); });
+    if (readAllBtn) readAllBtn.addEventListener('click', (e) => { e.stopPropagation(); markAllRead(); });
+
+    // Close panel when clicking outside
+    document.addEventListener('click', (e) => {
+      if (_notifOpen && wrap && !wrap.contains(e.target)) closeNotifPanel();
+    });
+
+    // 4. Fetch initial badge count (don't open panel)
+    loadNotifications();
+
+    // 5. Auto-request permission if not yet asked
+    if (Notification.permission === 'default') {
+      LOG('Permission default — auto-prompting in 1.5s…');
+      await new Promise(r => setTimeout(r, 1500));
+      const granted = await enablePush();
+      await updateTogglePill();
+      if (granted) LOG('Auto-subscribed on page load.');
+    } else {
+      LOG('Permission already:', Notification.permission);
     }
   }
 
-  // Run on DOMContentLoaded
+  // Bootstrap
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initPushNotifications);
   } else {
     initPushNotifications();
   }
 
-  // Expose for manual use if needed
-  window.pushNotifications = { enable: enablePush, disable: disablePush, init: initPushNotifications };
+  // Expose for DevTools debugging
+  window.pushNotifications = {
+    enable:  enablePush,
+    disable: disablePush,
+    status:  async () => {
+      const sub = await getCurrentSub();
+      console.table({
+        'Supported':  isPushSupported(),
+        'Permission': Notification.permission,
+        'Subscribed': !!sub,
+      });
+    },
+  };
+
+  LOG('push-notifications.js loaded.');
 })();

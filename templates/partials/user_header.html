@@ -5,19 +5,35 @@
         </a>
         {% if show_user_menu %}
         <div class="{{ header_actions_class }}">
-            <button
-                id="push-toggle-btn"
-                type="button"
-                title="Bật thông báo"
-                aria-label="Bật/tắt thông báo"
-                class="push-bell-btn flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-400 hover:border-sky-300 hover:text-sky-600 transition-colors shadow-sm"
-            >
-                <svg id="push-bell-svg" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                    <line id="push-bell-slash" x1="2" y1="2" x2="22" y2="22" stroke-dasharray="0"/>
-                </svg>
-            </button>
+            <!-- Notification Inbox Bell -->
+            <div class="relative flex-shrink-0" id="notif-wrap">
+                <button
+                    id="notif-bell-btn"
+                    type="button"
+                    aria-label="Danh sách thông báo"
+                    title="Thông báo"
+                    class="push-bell-btn w-9 h-9 flex items-center justify-center rounded-full"
+                >
+                    <!-- Bell icon — SF Symbols style, solid fill -->
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M12 2a7 7 0 0 0-7 7c0 5.25-2.5 7.5-2.5 7.5h19S19 14.25 19 9a7 7 0 0 0-7-7z"/>
+                        <path d="M10.3 21a2 2 0 0 0 3.4 0" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+                    </svg>
+                    <!-- Unread badge -->
+                    <span id="notif-badge" class="notif-badge hidden"></span>
+                </button>
+
+                <!-- Dropdown inbox panel -->
+                <div id="notif-panel" class="notif-panel hidden">
+                    <div class="notif-panel-header">
+                        <span class="text-xs font-semibold text-slate-600 tracking-wide">Thông báo</span>
+                        <button id="notif-read-all" class="text-xs text-sky-500 font-medium hover:text-sky-700 transition-colors">Đánh dấu đã đọc</button>
+                    </div>
+                    <div id="notif-list" class="notif-list">
+                        <p class="notif-empty">Chưa có thông báo</p>
+                    </div>
+                </div>
+            </div>
             {% include "partials/user_menu.html" %}
         </div>
         {% elif header_action_href and header_action_label %}

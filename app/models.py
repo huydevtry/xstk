@@ -168,3 +168,17 @@ class PushSubscription(Base):
     auth = Column(String, nullable=False)
     user_agent = Column(String, nullable=True)
     created_at = Column(DateTime, default=_utc_now_naive)
+
+
+class Notification(Base):
+    """Persistent notification history shown in the bell inbox."""
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String, nullable=False)
+    body = Column(String, nullable=False, default="")
+    url = Column(String, nullable=False, default="/")
+    icon = Column(String, nullable=False, default="/static/icons/icon-192.png")
+    is_read = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=_utc_now_naive, nullable=False, index=True)

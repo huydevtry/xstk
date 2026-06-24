@@ -125,34 +125,42 @@ async function navigationWithOfflineFallback(request) {
 }
 
 // ---------------------------------------------------------------------------
-// Push — receive push event and show notification
+// Push — receive empty push, fetch content from server, show notification
 // ---------------------------------------------------------------------------
 self.addEventListener('push', (event) => {
-  if (!event.data) return;
+  // Server sends an empty push (no payload) to wake us up.
+  // We fetch the actual notification data from the server using the session cookie.
+  event.waitUntil(
+    fetch('/api/v1/push/latest-notification', {
+      credentials: 'include',          // send session cookie so server knows who we are
+      cache: 'no-store',
+    })
+      .then((res) => {
+        // 204 = no pending notification (could be a duplicate wakeup), stay silent
+        if (res.status === 204 || !res.ok) return;
+        return res.json();
+      })
+      .then((payload) => {
+        if (!payload) return;
 
-  let payload = {};
-  try {
-    payload = event.data.json();
-  } catch {
-    payload = { title: 'Thông báo mới', body: event.data.text(), url: '/' };
-  }
-
-  const title = payload.title || 'Khóa Tu Mùa Hè';
-  const options = {
-    body: payload.body || '',
-    icon: payload.icon || '/static/icons/icon-192.png',
-    badge: '/static/icons/icon-192.png',
-    data: { url: payload.url || '/' },
-    tag: payload.tag || 'xstk-notification',
-    renotify: true,
-    vibrate: [200, 100, 200],
-    actions: [
-      { action: 'open', title: 'Xem ngay' },
-      { action: 'dismiss', title: 'Bỏ qua' },
-    ],
-  };
-
-  event.waitUntil(self.registration.showNotification(title, options));
+        const title = payload.title || 'Thông báo mới';
+        const options = {
+          body: payload.body || '',
+          icon: payload.icon || '/static/icons/icon-192.png',
+          badge: '/static/icons/icon-192.png',
+          data: { url: payload.url || '/' },
+          tag: 'xstk-notification',
+          renotify: true,
+          vibrate: [200, 100, 200],
+          actions: [
+            { action: 'open', title: 'Xem ngay' },
+            { action: 'dismiss', title: 'Bỏ qua' },
+          ],
+        };
+        return self.registration.showNotification(title, options);
+      })
+      .catch((err) => console.warn('[SW] Push fetch failed:', err))
+  );
 });
 
 // ---------------------------------------------------------------------------
