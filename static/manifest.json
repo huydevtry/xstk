@@ -1,0 +1,29 @@
+{
+  "name": "Cộng đồng tự học",
+  "short_name": "Khóa Tu Mùa Hè",
+  "description": "Đặt cược, theo dõi kết quả và kết nối cộng đồng học tập",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#0ea5e9",
+  "background_color": "#f8fafc",
+  "lang": "vi",
+  "icons": [
+    {
+      "src": "/static/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "categories": ["social", "education", "games"],
+  "prefer_related_applications": false
+}

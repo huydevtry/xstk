@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.routers import admin, bets, community, leaderboard, matches, me, pages, settings, users
+from app.routers import admin, bets, community, leaderboard, matches, me, pages, push, settings, users
 from app.schema_migrations import ensure_sqlite_schema
 
 
@@ -22,6 +22,7 @@ def create_app() -> FastAPI:
     app.include_router(bets.router)
     app.include_router(leaderboard.router)
     app.include_router(admin.router)
+    app.include_router(push.router)
 
     return app
 

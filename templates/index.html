@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Cộng đồng tự học</title>
+    {% include "partials/pwa_head.html" %}
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/css/style.css?v={{ asset_version }}">
     <link rel="stylesheet" href="/static/css/betting-taunt.css?v={{ asset_version }}">
@@ -138,5 +139,6 @@
     <script src="/static/js/user-menu.js?v={{ asset_version }}"></script>
     <script src="/static/js/app.js?v={{ asset_version }}"></script>
     <script src="/static/js/app-taunt.js?v={{ asset_version }}"></script>
+    {% include "partials/pwa_scripts.html" %}
 </body>
 </html>

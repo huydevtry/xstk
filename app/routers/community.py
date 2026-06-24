@@ -1,4 +1,6 @@
 from fastapi import APIRouter
+import asyncio
+from app.services import push_service
 
 from app.schemas.payloads import (
     AdminSettingsPayload,
@@ -211,7 +213,14 @@ async def toggle_community_post_like(
     except IntegrityError:
         await db.rollback()
 
-    return await _profile_post_interaction_payload(db, post_id, user)
+    result = await _profile_post_interaction_payload(db, post_id, user)
+
+    # Push notification only when liking (not un-liking)
+    if not existing:
+        post = await _get_public_profile_post(db, post_id)
+        asyncio.create_task(push_service.notify_post_liked(db, post, user))
+
+    return result
 
 @router.post("/api/v1/community/posts/{post_id}/comments", status_code=201)
 async def create_community_post_comment(
@@ -228,4 +237,11 @@ async def create_community_post_comment(
     )
     db.add(comment)
     await db.commit()
-    return await _profile_post_interaction_payload(db, post_id, user)
+
+    result = await _profile_post_interaction_payload(db, post_id, user)
+
+    # Push notification to post owner + prior commenters
+    post = await _get_public_profile_post(db, post_id)
+    asyncio.create_task(push_service.notify_post_commented(db, post, user))
+
+    return result

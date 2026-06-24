@@ -15,3 +15,6 @@ async def ensure_sqlite_schema() -> None:
             await conn.execute(text("ALTER TABLE profile_status_posts ADD COLUMN media_url VARCHAR"))
         if "media_content_type" not in existing_columns:
             await conn.execute(text("ALTER TABLE profile_status_posts ADD COLUMN media_content_type VARCHAR"))
+
+        # push_subscriptions table is created by Base.metadata.create_all above (PushSubscription model)
+        # No manual migration needed — SQLAlchemy handles it via create_all.

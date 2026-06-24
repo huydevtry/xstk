@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Trang Cá Nhân | Cộng đồng tự học</title>
+    {% include "partials/pwa_head.html" %}
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/css/style.css?v={{ asset_version }}">
     <style>
@@ -512,5 +513,6 @@
     <script src="/static/js/user-shell.js?v={{ asset_version }}"></script>
     <script src="/static/js/user-menu.js?v={{ asset_version }}"></script>
     <script src="/static/js/profile.js?v={{ asset_version }}"></script>
+    {% include "partials/pwa_scripts.html" %}
 </body>
 </html>
