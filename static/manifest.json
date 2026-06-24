@@ -1,7 +1,7 @@
 {
-  "name": "Cộng đồng tự học",
-  "short_name": "Khóa Tu Mùa Hè",
-  "description": "Đặt cược, theo dõi kết quả và kết nối cộng đồng học tập",
+  "name": "Xác Suất & Thống Kê",
+  "short_name": "XSTK",
+  "description": "Cộng đồng dự đoán tỷ số bóng đá nội bộ",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
