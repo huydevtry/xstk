@@ -2,9 +2,9 @@
  * push-notifications.js
  *
  * Responsibilities:
- *  1. Register Service Worker
+ *  1. Register Service Worker (robust, non-blocking)
  *  2. Auto-request notification permission + subscribe on first load
- *  3. Push toggle button in user menu (on/off + pill label)
+ *  3. Push toggle button in user menu (always responsive, helpful error dialogs)
  *  4. Notification inbox bell: fetch list, show badge, open/close panel
  */
 
@@ -35,7 +35,7 @@
 
   function timeAgo(isoStr) {
     if (!isoStr) return '';
-    const diff = Date.now() - new Date(isoStr + 'Z').getTime();
+    const diff = Date.now() - new Date(isoStr).getTime(); // Note: DB returns UTC ISO string, handled natively by browser Date
     const m = Math.floor(diff / 60000);
     if (m < 1)  return 'Vừa xong';
     if (m < 60) return `${m} phút trước`;
@@ -63,15 +63,20 @@
   }
 
   async function getCurrentSub() {
-    const reg = _swReg || await navigator.serviceWorker.ready;
-    return reg.pushManager.getSubscription();
+    if (!isPushSupported() || !_swReg) return null;
+    try {
+      return await _swReg.pushManager.getSubscription();
+    } catch (e) {
+      WARN('getCurrentSub failed:', e);
+      return null;
+    }
   }
 
   // -------------------------------------------------------------------------
   // Subscribe / Unsubscribe
   // -------------------------------------------------------------------------
   async function enablePush() {
-    if (!isPushSupported()) return false;
+    if (!isPushSupported() || !_swReg) return false;
 
     LOG('Requesting permission…');
     const perm = await Notification.requestPermission();
@@ -80,9 +85,7 @@
 
     try {
       const key = await getVapidKey();
-      const reg = _swReg || await navigator.serviceWorker.ready;
-
-      const sub = await reg.pushManager.subscribe({
+      const sub = await _swReg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(key),
       });
@@ -133,10 +136,10 @@
     const btn  = document.getElementById('push-toggle-btn');
     if (!pill) return;
 
-    if (!isPushSupported()) {
+    if (!isPushSupported() || !_swReg) {
       pill.textContent = 'Không hỗ trợ';
       pill.className   = 'push-toggle-pill off';
-      if (btn) btn.disabled = true;
+      if (btn) btn.disabled = false; // Keep clickable to show descriptive alert on click!
       return;
     }
 
@@ -146,25 +149,64 @@
     if (perm === 'denied') {
       pill.textContent = 'Bị chặn';
       pill.className   = 'push-toggle-pill denied';
-      if (btn) btn.disabled = true;
+      if (btn) btn.disabled = false; // Do NOT disable! Keep clickable so we can guide them how to unblock it!
     } else if (sub) {
       pill.textContent = 'BẬT';
       pill.className   = 'push-toggle-pill on';
+      if (btn) btn.disabled = false;
     } else {
       pill.textContent = 'TẮT';
       pill.className   = 'push-toggle-pill off';
+      if (btn) btn.disabled = false;
     }
   }
 
   async function handlePushToggle() {
-    const sub = await getCurrentSub();
     const btn = document.getElementById('push-toggle-btn');
     if (btn) btn.disabled = true;
+
+    // 1. If Web Push is not supported or SW registration failed
+    if (!isPushSupported() || !_swReg) {
+      alert(
+        'Thông báo đẩy không khả dụng trên trình duyệt hoặc thiết bị này.\n\n' +
+        'Các lý do phổ biến:\n' +
+        '- Bạn đang duyệt web ở chế độ ẩn danh (Private/Incognito).\n' +
+        '- Ứng dụng đang chạy trên giao thức HTTP không bảo mật (yêu cầu HTTPS hoặc localhost).\n' +
+        '- Trình duyệt hoặc hệ điều hành của bạn chưa hỗ trợ Web Push API.'
+      );
+      if (btn) btn.disabled = false;
+      return;
+    }
+
+    // 2. If permission is explicitly blocked (denied)
+    if (Notification.permission === 'denied') {
+      alert(
+        'Quyền nhận thông báo đã bị chặn trên trình duyệt này.\n\n' +
+        'Để nhận được thông báo, vui lòng:\n' +
+        '1. Nhấp vào biểu tượng ổ khóa 🔒 (hoặc biểu tượng tùy chọn trang web) ở bên trái thanh địa chỉ trình duyệt.\n' +
+        '2. Tìm mục "Thông báo" (Notifications) và chuyển sang trạng thái "Cho phép" (Allow).\n' +
+        '3. Tải lại trang web này và nhấn lại nút Bật thông báo.'
+      );
+      if (btn) btn.disabled = false;
+      await updateTogglePill();
+      return;
+    }
+
+    const sub = await getCurrentSub();
 
     if (sub) {
       await disablePush();
     } else {
-      await enablePush();
+      const ok = await enablePush();
+      if (!ok && Notification.permission === 'denied') {
+        alert(
+          'Quyền nhận thông báo đã bị chặn trên trình duyệt này.\n\n' +
+          'Để nhận được thông báo, vui lòng:\n' +
+          '1. Nhấp vào biểu tượng ổ khóa 🔒 ở bên trái thanh địa chỉ trình duyệt.\n' +
+          '2. Tìm mục "Thông báo" (Notifications) và chuyển sang trạng thái "Cho phép" (Allow).\n' +
+          '3. Tải lại trang web.'
+        );
+      }
     }
 
     if (btn) btn.disabled = false;
@@ -266,26 +308,29 @@
   // -------------------------------------------------------------------------
   async function initPushNotifications() {
     LOG('Init. Push supported:', isPushSupported());
-    if (!isPushSupported()) return;
 
-    // 1. Register SW
-    try {
-      await registerSW();
-      await navigator.serviceWorker.ready;
-      LOG('SW ready.');
-    } catch (err) {
-      ERR('SW registration failed:', err);
-      return;
+    // 1. Register SW (non-blocking, don't return early if it fails)
+    if (isPushSupported()) {
+      try {
+        _swReg = await registerSW();
+        LOG('SW registered successfully.');
+      } catch (err) {
+        ERR('SW registration failed:', err);
+        _swReg = null;
+      }
+    } else {
+      LOG('Push/ServiceWorker not supported in this browser.');
+      _swReg = null;
     }
 
-    // 2. Wire up push toggle in user menu
+    // 2. Wire up push toggle in user menu (ALWAYS wire this up, even if SW failed)
     const toggleBtn = document.getElementById('push-toggle-btn');
     if (toggleBtn) {
       toggleBtn.addEventListener('click', handlePushToggle);
     }
     await updateTogglePill();
 
-    // 3. Wire up notification inbox bell
+    // 3. Wire up notification inbox bell (ALWAYS wire this up)
     const bellBtn     = document.getElementById('notif-bell-btn');
     const readAllBtn  = document.getElementById('notif-read-all');
     const wrap        = document.getElementById('notif-wrap');
@@ -298,18 +343,23 @@
       if (_notifOpen && wrap && !wrap.contains(e.target)) closeNotifPanel();
     });
 
-    // 4. Fetch initial badge count (don't open panel)
+    // 4. Fetch initial badge count (ALWAYS do this)
     loadNotifications();
 
-    // 5. Auto-request permission if not yet asked
-    if (Notification.permission === 'default') {
+    // 5. Auto-request permission if not yet asked (ONLY if SW registration succeeded)
+    if (_swReg && Notification.permission === 'default') {
       LOG('Permission default — auto-prompting in 1.5s…');
-      await new Promise(r => setTimeout(r, 1500));
-      const granted = await enablePush();
-      await updateTogglePill();
-      if (granted) LOG('Auto-subscribed on page load.');
+      setTimeout(async () => {
+        try {
+          const granted = await enablePush();
+          await updateTogglePill();
+          if (granted) LOG('Auto-subscribed on page load.');
+        } catch (e) {
+          WARN('Auto-prompt subscription failed:', e);
+        }
+      }, 1500);
     } else {
-      LOG('Permission already:', Notification.permission);
+      LOG('Auto-prompt skipped. SW active:', !!_swReg, 'Permission:', Notification.permission);
     }
   }
 
@@ -330,6 +380,7 @@
         'Supported':  isPushSupported(),
         'Permission': Notification.permission,
         'Subscribed': !!sub,
+        'SW Active':  !!_swReg,
       });
     },
   };
