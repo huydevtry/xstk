@@ -934,6 +934,7 @@ function initAvatarModal() {
                 renderHeaderUserInfo();
             }
             applyProfileUI();
+            await fetchTimeline(true);
             close();
         } catch (error) {
             errorEl.textContent = error.message || "Lỗi không xác định.";
@@ -1068,6 +1069,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     initAvatarModal();
     initAvatarViewModal();
     initNameModal();
+    window.TimelineFeed?.initEditor?.({
+        containerId: "profile-status-timeline",
+        getOptions() {
+            return {};
+        },
+    });
     document.getElementById("timeline-load-more")?.addEventListener("click", () => fetchTimeline(false));
     document.getElementById("point-history-load-more")?.addEventListener("click", () => fetchPointHistory(false));
 

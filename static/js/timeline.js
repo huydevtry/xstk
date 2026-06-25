@@ -258,26 +258,63 @@
         `;
     }
 
+    function renderEditButton(item) {
+        if (!item?.can_edit) return "";
+        return `
+            <button
+                type="button"
+                class="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-600"
+                data-timeline-action="edit"
+                data-post-id="${escapeHtml(item?.id ?? "")}"
+                aria-label="Sửa bài viết"
+                title="Sửa bài viết"
+            >
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 7.125L16.875 4.5M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/>
+                </svg>
+            </button>
+        `;
+    }
+
     function createTimelineItemHtml(item, options = {}) {
         const author = item?.author || {};
         const authorHref = buildAuthorHref(author, options);
         const authorName = escapeHtml(author.display_name || author.name || "Người dùng");
+        const editedLabel = item?.is_edited
+            ? `<span class="italic text-slate-400">Đã chỉnh sửa</span>`
+            : "";
+        const timeNode = `
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-400">
+                <span>${escapeHtml(formatTime(item?.created_at))}</span>
+                ${editedLabel}
+            </div>
+        `;
         const authorNode = authorHref
-            ? `<a href="${escapeHtml(authorHref)}" class="inline-flex min-w-0 items-center gap-3 hover:opacity-90">${renderAvatar(author)}<div class="min-w-0"><div class="truncate text-sm font-semibold text-slate-900">${authorName}</div><div class="text-[11px] text-slate-400">${escapeHtml(formatTime(item?.created_at))}</div></div></a>`
-            : `<div class="inline-flex min-w-0 items-center gap-3">${renderAvatar(author)}<div class="min-w-0"><div class="truncate text-sm font-semibold text-slate-900">${authorName}</div><div class="text-[11px] text-slate-400">${escapeHtml(formatTime(item?.created_at))}</div></div></div>`;
+            ? `<a href="${escapeHtml(authorHref)}" class="inline-flex min-w-0 items-center gap-3 hover:opacity-90">${renderAvatar(author)}<div class="min-w-0"><div class="truncate text-sm font-semibold text-slate-900">${authorName}</div>${timeNode}</div></a>`
+            : `<div class="inline-flex min-w-0 items-center gap-3">${renderAvatar(author)}<div class="min-w-0"><div class="truncate text-sm font-semibold text-slate-900">${authorName}</div>${timeNode}</div></div>`;
 
         const content = String(item?.content || "");
+        const media = item?.media || null;
         const contentNode = content
             ? `<p class="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">${escapeHtml(content)}</p>`
             : "";
 
         return `
-            <article class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm" data-timeline-post-id="${escapeHtml(item?.id ?? "")}">
+            <article
+                class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+                data-timeline-post-id="${escapeHtml(item?.id ?? "")}"
+                data-post-content="${escapeHtml(content)}"
+                data-post-media-url="${escapeHtml(media?.url || "")}"
+                data-post-media-content-type="${escapeHtml(media?.content_type || "")}"
+                data-post-media-provider="${escapeHtml(media?.provider || "")}"
+            >
                 <div class="flex items-start justify-between gap-3">
                     ${authorNode}
+                    ${renderEditButton(item)}
                 </div>
                 ${contentNode}
-                ${renderMedia(item?.media)}
+                ${renderMedia(media)}
                 ${item?.post_type === "match_reaction" ? renderReactionResult(item?.reaction_result) : ""}
                 ${renderMatchSummary(item?.match)}
                 ${renderInteractions(item, options)}
@@ -300,11 +337,247 @@
         container.insertAdjacentHTML("afterbegin", (items || []).map(item => createTimelineItemHtml(item, options)).join(""));
     }
 
+    function initEditor(config = {}) {
+        const container = document.getElementById(config.containerId);
+        const modal = document.getElementById("timeline-edit-modal");
+        const contentInput = document.getElementById("timeline-edit-content");
+        const countEl = document.getElementById("timeline-edit-count");
+        const fileInput = document.getElementById("timeline-edit-media-input");
+        const chooseMediaBtn = document.getElementById("choose-timeline-edit-media");
+        const removeMediaBtn = document.getElementById("remove-timeline-edit-media");
+        const clearMediaBtn = document.getElementById("clear-timeline-edit-media");
+        const previewWrap = document.getElementById("timeline-edit-media-preview-wrap");
+        const previewImg = document.getElementById("timeline-edit-media-preview");
+        const errorEl = document.getElementById("timeline-edit-error");
+        const saveBtn = document.getElementById("timeline-edit-save");
+        const cancelBtn = document.getElementById("timeline-edit-cancel");
+        const closeBtn = document.getElementById("close-timeline-edit");
+        if (!container || !modal || !contentInput || !countEl || !fileInput || !chooseMediaBtn || !removeMediaBtn || !clearMediaBtn || !previewWrap || !previewImg || !errorEl || !saveBtn || !cancelBtn || !closeBtn) {
+            return;
+        }
+
+        const maxBytes = 8 * 1024 * 1024;
+        const uploadTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+        let activeArticle = null;
+        let activePostId = null;
+        let originalMedia = null;
+        let selectedFile = null;
+        let selectedPreviewUrl = "";
+        let selectedExternalUrl = "";
+        let selectedExternalProvider = "";
+        let removeMedia = false;
+
+        function setError(message) {
+            errorEl.textContent = message || "";
+            errorEl.classList.toggle("hidden", !message);
+        }
+
+        function updateCount() {
+            countEl.textContent = String(contentInput.value.length);
+        }
+
+        function revokePreview() {
+            if (selectedPreviewUrl) URL.revokeObjectURL(selectedPreviewUrl);
+            selectedPreviewUrl = "";
+        }
+
+        function currentPreviewUrl() {
+            if (selectedPreviewUrl) return selectedPreviewUrl;
+            if (selectedExternalUrl) return selectedExternalUrl;
+            if (!removeMedia && originalMedia?.url) return originalMedia.url;
+            return "";
+        }
+
+        function syncMediaPreview() {
+            const previewUrl = currentPreviewUrl();
+            if (previewUrl) {
+                previewImg.src = previewUrl;
+                previewWrap.classList.remove("hidden");
+                removeMediaBtn.classList.remove("hidden");
+            } else {
+                previewImg.src = "";
+                previewWrap.classList.add("hidden");
+                removeMediaBtn.classList.add("hidden");
+            }
+            clearMediaBtn.classList.toggle("hidden", !selectedFile && !selectedExternalUrl && !removeMedia);
+        }
+
+        function resetReplacement() {
+            revokePreview();
+            selectedFile = null;
+            selectedExternalUrl = "";
+            selectedExternalProvider = "";
+            removeMedia = false;
+            fileInput.value = "";
+            syncMediaPreview();
+        }
+
+        function openEditor(article) {
+            activeArticle = article;
+            activePostId = Number(article?.dataset?.timelinePostId || 0);
+            originalMedia = article?.dataset?.postMediaUrl ? {
+                url: article.dataset.postMediaUrl,
+                content_type: article.dataset.postMediaContentType || "",
+                provider: article.dataset.postMediaProvider || "",
+            } : null;
+            contentInput.value = article?.dataset?.postContent || "";
+            resetReplacement();
+            updateCount();
+            setError("");
+            modal.classList.remove("hidden");
+            document.body.style.overflow = "hidden";
+            window.setTimeout(() => contentInput.focus(), 40);
+        }
+
+        function closeEditor() {
+            modal.classList.add("hidden");
+            document.body.style.overflow = "";
+            activeArticle = null;
+            activePostId = null;
+            originalMedia = null;
+            resetReplacement();
+            setError("");
+        }
+
+        function setMediaFile(file) {
+            if (!file) return;
+            if (!uploadTypes.has(file.type)) {
+                setError("Chỉ chấp nhận ảnh JPG, PNG, WebP. GIF hãy chọn từ GIPHY.");
+                return;
+            }
+            if (file.size > maxBytes) {
+                setError("Ảnh quá lớn, tối đa 8MB.");
+                return;
+            }
+            revokePreview();
+            selectedFile = file;
+            selectedExternalUrl = "";
+            selectedExternalProvider = "";
+            removeMedia = false;
+            selectedPreviewUrl = URL.createObjectURL(file);
+            setError("");
+            syncMediaPreview();
+        }
+
+        function setExternalMedia(media) {
+            const url = String(media?.url || "").trim();
+            const provider = String(media?.provider || "").trim().toLowerCase();
+            if (!url || provider !== "giphy") {
+                setError("Không thể chọn GIF lúc này.");
+                return;
+            }
+            revokePreview();
+            selectedFile = null;
+            selectedExternalUrl = url;
+            selectedExternalProvider = provider;
+            removeMedia = false;
+            fileInput.value = "";
+            setError("");
+            syncMediaPreview();
+        }
+
+        function buildRequestOptions() {
+            if (selectedFile) {
+                const form = new FormData();
+                form.append("content", contentInput.value);
+                form.append("media", selectedFile);
+                return { method: "PATCH", body: form };
+            }
+            const payload = { content: contentInput.value };
+            if (selectedExternalUrl && selectedExternalProvider) {
+                payload.external_media_url = selectedExternalUrl;
+                payload.external_media_provider = selectedExternalProvider;
+            } else if (removeMedia) {
+                payload.remove_media = true;
+            }
+            return {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            };
+        }
+
+        async function submitEdit() {
+            if (!activePostId || saveBtn.disabled) return;
+            const hasMediaAfterSave = Boolean(selectedFile || selectedExternalUrl || (!removeMedia && originalMedia?.url));
+            if (!contentInput.value.trim() && !hasMediaAfterSave) {
+                setError("Bài viết phải có nội dung hoặc media.");
+                return;
+            }
+
+            saveBtn.disabled = true;
+            const oldText = saveBtn.textContent;
+            saveBtn.textContent = "Đang lưu...";
+            setError("");
+
+            try {
+                const response = await fetch(`/api/v1/me/statuses/${encodeURIComponent(activePostId)}`, {
+                    ...buildRequestOptions(),
+                    cache: "no-store",
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.detail || `Lỗi ${response.status}`);
+                if (data.status_post && activeArticle) {
+                    const options = typeof config.getOptions === "function" ? config.getOptions() : {};
+                    activeArticle.outerHTML = createTimelineItemHtml(data.status_post, options);
+                }
+                config.onPostUpdated?.(data);
+                closeEditor();
+            } catch (error) {
+                setError(error.message || "Không thể lưu bài viết.");
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = oldText;
+            }
+        }
+
+        container.addEventListener("click", event => {
+            const editBtn = event.target.closest("[data-timeline-action='edit']");
+            if (!editBtn || !container.contains(editBtn)) return;
+            const article = editBtn.closest("[data-timeline-post-id]");
+            if (article) openEditor(article);
+        });
+        contentInput.addEventListener("input", () => {
+            updateCount();
+            setError("");
+        });
+        chooseMediaBtn.addEventListener("click", () => fileInput.click());
+        fileInput.addEventListener("change", () => setMediaFile(fileInput.files?.[0]));
+        removeMediaBtn.addEventListener("click", () => {
+            revokePreview();
+            selectedFile = null;
+            selectedExternalUrl = "";
+            selectedExternalProvider = "";
+            removeMedia = true;
+            fileInput.value = "";
+            syncMediaPreview();
+        });
+        clearMediaBtn.addEventListener("click", resetReplacement);
+        saveBtn.addEventListener("click", submitEdit);
+        cancelBtn.addEventListener("click", closeEditor);
+        closeBtn.addEventListener("click", closeEditor);
+        modal.addEventListener("click", event => {
+            if (event.target === modal) closeEditor();
+        });
+
+        window.GiphyPicker?.init({
+            openButtonId: "open-timeline-edit-giphy",
+            modalId: "timeline-edit-giphy-modal",
+            closeButtonId: "close-timeline-edit-giphy",
+            searchInputId: "timeline-edit-giphy-search-input",
+            searchButtonId: "timeline-edit-giphy-search-button",
+            resultsId: "timeline-edit-giphy-results",
+            statusId: "timeline-edit-giphy-status",
+            onSelect: setExternalMedia,
+        });
+    }
+
     window.TimelineFeed = {
         render,
         append,
         prepend,
         createTimelineItemHtml,
         renderInteractions,
+        initEditor,
     };
 })();

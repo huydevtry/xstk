@@ -479,6 +479,10 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("community-load-more")?.addEventListener("click", () => fetchCommunityTimeline(false));
     initCommunityComposer();
     initCommunityTimelineInteractions();
+    window.TimelineFeed?.initEditor?.({
+        containerId: "community-timeline",
+        getOptions: communityTimelineOptions,
+    });
     initFeedMediaPicker();
     initGiphyPicker();
     fetchCommunityViewer();

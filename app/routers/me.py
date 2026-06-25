@@ -28,6 +28,7 @@ from app.services.shared import (
     MAX_HOMEPAGE_ANNOUNCEMENT_LENGTH,
     PROFILE_POST_TYPE_TEXT,
     PROFILE_POST_TYPE_MATCH_REACTION,
+    PROFILE_POST_TYPE_AVATAR_UPDATE,
     DEFAULT_POINT_TRANSACTION_PAGE_SIZE,
     MAX_POINT_TRANSACTION_PAGE_SIZE,
     POINT_TRANSACTIONS_BACKFILL_KEY,
@@ -73,10 +74,14 @@ from app.services.shared import (
     _sync_match_statuses,
     _get_user_by_id,
     AVATARS_DIR,
+    FEED_MEDIA_DIR,
     AVATAR_CONTENT_TYPES,
     _detect_image_content_type,
     _normalize_external_media_payload,
+    _save_feed_media_bytes,
     _save_feed_media_file,
+    _delete_local_media_file,
+    _delete_unused_feed_media,
     _match_result_published,
     _match_response,
     _choice_label,
@@ -148,6 +153,8 @@ from app.services.shared import (
 
 router = APIRouter()
 
+_EDIT_CONTENT_UNSET = object()
+
 def _parse_status_match_id(value) -> Optional[int]:
     if value is None:
         return None
@@ -187,6 +194,41 @@ async def _read_profile_status_request(
         None,
         payload.external_media_url,
         payload.external_media_provider,
+    )
+
+def _parse_form_bool(value) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+async def _read_profile_status_edit_request(
+    request: Request,
+) -> tuple[object, Optional[UploadFile], Optional[str], Optional[str], bool]:
+    content_type = (request.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+    if content_type == "multipart/form-data":
+        form = await request.form()
+        media_candidate = form.get("media")
+        media_file = media_candidate if getattr(media_candidate, "filename", "") else None
+        content = str(form.get("content") or "") if "content" in form else _EDIT_CONTENT_UNSET
+        return (
+            content,
+            media_file,
+            str(form.get("external_media_url") or ""),
+            str(form.get("external_media_provider") or ""),
+            _parse_form_bool(form.get("remove_media")),
+        )
+
+    try:
+        payload = await request.json()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Payload không hợp lệ.")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Payload không hợp lệ.")
+
+    return (
+        payload["content"] if "content" in payload else _EDIT_CONTENT_UNSET,
+        None,
+        str(payload.get("external_media_url") or ""),
+        str(payload.get("external_media_provider") or ""),
+        _parse_form_bool(payload.get("remove_media")),
     )
 
 @router.get("/api/v1/me")
@@ -320,21 +362,104 @@ async def create_profile_status(
         post_type = PROFILE_POST_TYPE_MATCH_REACTION
 
     media_payload = await _save_feed_media_file(media_file) if media_file is not None else external_media
-    post = await _create_profile_status_post(
-        db,
-        user,
-        content or "",
-        post_type=post_type,
-        match=match,
-        media_url=media_payload["url"] if media_payload else None,
-        media_content_type=media_payload["content_type"] if media_payload else None,
-    )
-    await db.commit()
+    try:
+        post = await _create_profile_status_post(
+            db,
+            user,
+            content or "",
+            post_type=post_type,
+            match=match,
+            media_url=media_payload["url"] if media_payload else None,
+            media_content_type=media_payload["content_type"] if media_payload else None,
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        if media_payload and media_payload.get("url"):
+            _delete_local_media_file(media_payload["url"], FEED_MEDIA_DIR)
+        raise
     await db.refresh(post)
     await db.refresh(user)
 
     return {
-        "status_post": _serialize_profile_status_post(post, author=user, match=match, bet=bet_record),
+        "status_post": _serialize_profile_status_post(post, author=user, match=match, bet=bet_record, viewer_user_id=user.id),
+        "status_timeline": await _get_profile_status_timeline(db, user.id, viewer_user_id=user.id),
+        "profile_status": user.profile_status,
+    }
+
+@router.patch("/api/v1/me/statuses/{post_id}")
+async def edit_profile_status(
+    post_id: int,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    post = (
+        await db.execute(
+            select(ProfileStatusPost).where(
+                ProfileStatusPost.id == post_id,
+                ProfileStatusPost.user_id == user.id,
+            )
+        )
+    ).scalars().first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Bài viết không tồn tại.")
+
+    raw_content, media_file, external_media_url, external_media_provider, remove_media = await _read_profile_status_edit_request(request)
+    external_media = _normalize_external_media_payload(external_media_url, external_media_provider)
+    if media_file is not None and external_media is not None:
+        raise HTTPException(status_code=400, detail="Chỉ được chọn một nguồn media cho mỗi bài đăng.")
+
+    content = post.content
+    if raw_content is not _EDIT_CONTENT_UNSET:
+        content = _normalize_optional_profile_status(str(raw_content)) or ""
+
+    old_media_url = post.media_url
+    new_media = None
+    if media_file is not None:
+        new_media = await _save_feed_media_file(media_file)
+    elif external_media is not None:
+        new_media = external_media
+
+    media_should_change = remove_media or new_media is not None
+    next_media_url = post.media_url
+    next_media_content_type = post.media_content_type
+    if media_should_change:
+        next_media_url = new_media["url"] if new_media else None
+        next_media_content_type = new_media["content_type"] if new_media else None
+
+    if not content and not next_media_url:
+        if new_media and new_media.get("url"):
+            _delete_local_media_file(new_media["url"], FEED_MEDIA_DIR)
+        raise HTTPException(status_code=400, detail="Bài viết phải có nội dung hoặc media.")
+
+    post.content = content
+    post.media_url = next_media_url
+    post.media_content_type = next_media_content_type
+    post.edited_at = _utc_now_naive()
+    db.add(post)
+
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        if new_media and new_media.get("url"):
+            _delete_local_media_file(new_media["url"], FEED_MEDIA_DIR)
+        raise
+
+    if media_should_change and old_media_url and old_media_url != next_media_url:
+        await _delete_unused_feed_media(db, old_media_url, exclude_post_id=post.id)
+
+    await db.refresh(post)
+    result = await _list_profile_status_posts(db, viewer_user_id=user.id, post_id=post.id, limit=1)
+    status_post = result["items"][0] if result.get("items") else _serialize_profile_status_post(
+        post,
+        author=user,
+        viewer_user_id=user.id,
+    )
+
+    return {
+        "status_post": status_post,
         "status_timeline": await _get_profile_status_timeline(db, user.id, viewer_user_id=user.id),
         "profile_status": user.profile_status,
     }
@@ -358,30 +483,45 @@ async def upload_avatar(
     if detected_type != content_type:
         raise HTTPException(status_code=400, detail="Nội dung file không khớp định dạng ảnh.")
 
-    # Tạo thư mục nếu chưa có
     AVATARS_DIR.mkdir(parents=True, exist_ok=True)
-    avatars_root = AVATARS_DIR.resolve()
-
-    # Xóa ảnh cũ nếu tồn tại
-    if user.avatar_url:
-        old_path = Path(user.avatar_url.lstrip("/")).resolve()
-        try:
-            old_path.relative_to(avatars_root)
-        except ValueError:
-            old_path = None
-        if old_path and old_path.is_file():
-            old_path.unlink(missing_ok=True)
-
-    # Lưu ảnh mới
     ext = AVATAR_CONTENT_TYPES[content_type]
     filename = f"{uuid_lib.uuid4().hex}.{ext}"
     dest = AVATARS_DIR / filename
-    dest.write_bytes(contents)
-
     avatar_url = f"/static/avatars/{filename}"
-    user.avatar_url = avatar_url
-    db.add(user)
-    await db.commit()
+    old_avatar_url = user.avatar_url
+    feed_media_payload = None
+
+    try:
+        dest.write_bytes(contents)
+        feed_media_payload = _save_feed_media_bytes(
+            contents,
+            content_type,
+            allowed_content_types=AVATAR_CONTENT_TYPES,
+            max_bytes=5 * 1024 * 1024,
+        )
+
+        user.avatar_url = avatar_url
+        await _create_profile_status_post(
+            db,
+            user,
+            f"{_user_display_name(user)} vừa đổi ảnh đại diện",
+            post_type=PROFILE_POST_TYPE_AVATAR_UPDATE,
+            media_url=feed_media_payload["url"],
+            media_content_type=feed_media_payload["content_type"],
+            update_profile_status=False,
+        )
+        db.add(user)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        _delete_local_media_file(avatar_url, AVATARS_DIR)
+        if feed_media_payload and feed_media_payload.get("url"):
+            _delete_local_media_file(feed_media_payload["url"], FEED_MEDIA_DIR)
+        raise
+
+    if old_avatar_url and old_avatar_url != avatar_url:
+        _delete_local_media_file(old_avatar_url, AVATARS_DIR)
+
     await db.refresh(user)
 
     return {"avatar_url": avatar_url}

@@ -104,6 +104,8 @@ PROFILE_POST_TYPE_TEXT = "text"
 
 PROFILE_POST_TYPE_MATCH_REACTION = "match_reaction"
 
+PROFILE_POST_TYPE_AVATAR_UPDATE = "avatar_update"
+
 DEFAULT_POINT_TRANSACTION_PAGE_SIZE = 20
 
 MAX_POINT_TRANSACTION_PAGE_SIZE = 50
@@ -436,22 +438,33 @@ def _serialize_profile_status_post(
     author: Optional[User] = None,
     match: Optional[Match] = None,
     bet: Optional[Bet] = None,
+    viewer_user_id: Optional[UUID] = None,
     like_count: int = 0,
     viewer_liked: bool = False,
     liked_users: Optional[list[dict]] = None,
     comment_count: int = 0,
     comments: Optional[list[dict]] = None,
 ) -> dict:
+    edited_at = getattr(post, "edited_at", None)
+    post_type = post.post_type or PROFILE_POST_TYPE_TEXT
+    can_edit = (
+        post_type != PROFILE_POST_TYPE_AVATAR_UPDATE
+        and viewer_user_id is not None
+        and post.user_id == viewer_user_id
+    )
     return {
         "id": post.id,
-        "post_type": (post.post_type or PROFILE_POST_TYPE_TEXT),
+        "post_type": post_type,
         "content": post.content,
         "media": _serialize_profile_status_media(post),
         "created_at": _serialize_utc_datetime(post.created_at),
+        "edited_at": _serialize_utc_datetime(edited_at),
+        "is_edited": edited_at is not None,
+        "can_edit": can_edit,
         "author": _user_avatar_payload(author) if author is not None else None,
         "match": _serialize_profile_status_match(match),
         "reaction_result": _serialize_match_reaction_result(bet=bet, match=match)
-        if (post.post_type or PROFILE_POST_TYPE_TEXT) == PROFILE_POST_TYPE_MATCH_REACTION
+        if post_type == PROFILE_POST_TYPE_MATCH_REACTION
         else None,
         "like_count": int(like_count or 0),
         "viewer_liked": bool(viewer_liked),
@@ -617,6 +630,7 @@ async def _list_profile_status_posts(
             author=row.User,
             match=row.Match,
             bet=row.Bet,
+            viewer_user_id=viewer_user_id,
             **interactions.get(row.ProfileStatusPost.id, {}),
         )
         for row in page_rows
@@ -653,6 +667,7 @@ async def _create_profile_status_post(
     match: Optional[Match] = None,
     media_url: Optional[str] = None,
     media_content_type: Optional[str] = None,
+    update_profile_status: bool = True,
 ) -> ProfileStatusPost:
     post = ProfileStatusPost(
         user_id=user.id,
@@ -663,7 +678,7 @@ async def _create_profile_status_post(
         media_content_type=media_content_type,
         created_at=created_at or _utc_now_naive(),
     )
-    if content:
+    if update_profile_status and content:
         user.profile_status = content
     db.add(post)
     db.add(user)
@@ -1096,29 +1111,86 @@ def _detect_image_content_type(contents: bytes) -> Optional[str]:
         return "image/webp"
     return None
 
-async def _save_feed_media_file(file: UploadFile) -> dict:
-    content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
-    if content_type not in FEED_UPLOAD_CONTENT_TYPES:
-        raise HTTPException(status_code=400, detail="Chỉ chấp nhận ảnh JPG, PNG, WebP. GIF chỉ được chọn từ GIPHY.")
+def _local_media_path(media_url: Optional[str], directory: Path) -> Optional[Path]:
+    url = (media_url or "").strip()
+    if not url:
+        return None
+    parsed = urlparse(url)
+    if parsed.scheme or parsed.netloc or not parsed.path:
+        return None
+    root = directory.resolve()
+    candidate = Path(parsed.path.lstrip("/")).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return None
+    return candidate
 
-    contents = await file.read()
-    if len(contents) > MAX_FEED_MEDIA_SIZE_BYTES:
-        raise HTTPException(status_code=400, detail="Ảnh quá lớn, tối đa 8MB.")
+def _delete_local_media_file(media_url: Optional[str], directory: Path) -> bool:
+    path = _local_media_path(media_url, directory)
+    if path is None or not path.is_file():
+        return False
+    path.unlink(missing_ok=True)
+    return True
+
+async def _delete_unused_feed_media(
+    db: AsyncSession,
+    media_url: Optional[str],
+    *,
+    exclude_post_id: Optional[int] = None,
+) -> bool:
+    path = _local_media_path(media_url, FEED_MEDIA_DIR)
+    if path is None:
+        return False
+
+    query = select(func.count(ProfileStatusPost.id)).where(ProfileStatusPost.media_url == media_url)
+    if exclude_post_id is not None:
+        query = query.where(ProfileStatusPost.id != exclude_post_id)
+    reference_count = (await db.execute(query)).scalar() or 0
+    if reference_count:
+        return False
+
+    if path.is_file():
+        path.unlink(missing_ok=True)
+        return True
+    return False
+
+def _save_feed_media_bytes(
+    contents: bytes,
+    content_type: str,
+    *,
+    allowed_content_types: Optional[dict[str, str]] = None,
+    max_bytes: int = MAX_FEED_MEDIA_SIZE_BYTES,
+) -> dict:
+    safe_content_type = (content_type or "").split(";", 1)[0].strip().lower()
+    allowed = allowed_content_types or FEED_UPLOAD_CONTENT_TYPES
+    if safe_content_type not in allowed:
+        raise HTTPException(status_code=400, detail="Định dạng ảnh không được hỗ trợ.")
+    if len(contents) > max_bytes:
+        raise HTTPException(status_code=400, detail="Ảnh quá lớn.")
 
     detected_type = _detect_image_content_type(contents)
-    if detected_type != content_type:
+    if detected_type != safe_content_type:
         raise HTTPException(status_code=400, detail="Nội dung file không khớp định dạng ảnh.")
 
     FEED_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-    ext = FEED_UPLOAD_CONTENT_TYPES[content_type]
+    ext = allowed[safe_content_type]
     filename = f"{uuid_lib.uuid4().hex}.{ext}"
     dest = FEED_MEDIA_DIR / filename
     dest.write_bytes(contents)
 
     return {
         "url": f"/static/feed-media/{filename}",
-        "content_type": content_type,
+        "content_type": safe_content_type,
     }
+
+async def _save_feed_media_file(file: UploadFile) -> dict:
+    content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
+    if content_type not in FEED_UPLOAD_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="Chỉ chấp nhận ảnh JPG, PNG, WebP. GIF chỉ được chọn từ GIPHY.")
+
+    contents = await file.read()
+    return _save_feed_media_bytes(contents, content_type)
 
 def _normalize_external_media_payload(media_url: Optional[str], media_provider: Optional[str]) -> Optional[dict]:
     url = (media_url or "").strip()

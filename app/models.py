@@ -77,6 +77,7 @@ class ProfileStatusPost(Base):
     media_url = Column(String, nullable=True)
     media_content_type = Column(String, nullable=True)
     created_at = Column(DateTime, default=_utc_now_naive, nullable=False, index=True)
+    edited_at = Column(DateTime, nullable=True)
 
 
 class ProfilePostLike(Base):
