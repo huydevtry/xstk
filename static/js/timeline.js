@@ -295,9 +295,15 @@
         container.insertAdjacentHTML("beforeend", (items || []).map(item => createTimelineItemHtml(item, options)).join(""));
     }
 
+    function prepend(container, items, options = {}) {
+        if (!container) return;
+        container.insertAdjacentHTML("afterbegin", (items || []).map(item => createTimelineItemHtml(item, options)).join(""));
+    }
+
     window.TimelineFeed = {
         render,
         append,
+        prepend,
         createTimelineItemHtml,
         renderInteractions,
     };

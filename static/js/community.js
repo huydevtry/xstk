@@ -496,7 +496,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // Scroll đến bài viết và highlight nhẹ
         const scrollToPost = () => {
             const article = document.querySelector(`[data-timeline-post-id="${targetPostId}"]`);
-            if (!article) return;
+            if (!article) return false;
             article.scrollIntoView({ behavior: 'smooth', block: 'center' });
             // Highlight tạm thời
             article.style.transition = 'box-shadow 0.3s ease, outline 0.3s ease';
@@ -506,10 +506,28 @@ document.addEventListener("DOMContentLoaded", () => {
                 article.style.outline = '';
                 article.style.boxShadow = '';
             }, 2500);
+            return true;
         };
 
-        // Thử ngay, nếu bài chưa render thì thử lại sau 500ms
-        scrollToPost();
-        setTimeout(scrollToPost, 600);
+        // Thử ngay, nếu bài chưa render thì thử fetch riêng
+        if (!scrollToPost()) {
+            setTimeout(() => {
+                if (!scrollToPost()) {
+                    fetch(`/api/v1/community/posts/${targetPostId}`, COMMUNITY_NO_CACHE_FETCH_OPTIONS)
+                        .then(res => {
+                            if (!res.ok) throw new Error();
+                            return res.json();
+                        })
+                        .then(postData => {
+                            const container = document.getElementById("community-timeline");
+                            if (container && window.TimelineFeed) {
+                                window.TimelineFeed.prepend(container, [postData], communityTimelineOptions());
+                                scrollToPost();
+                            }
+                        })
+                        .catch(err => console.error("Could not fetch target post", err));
+                }
+            }, 600);
+        }
     });
 });

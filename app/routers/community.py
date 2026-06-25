@@ -161,6 +161,17 @@ async def get_community_timeline(
 ):
     return await _list_profile_status_posts(db, viewer_user_id=user.id, offset=offset, limit=limit)
 
+@router.get("/api/v1/community/posts/{post_id}")
+async def get_community_post(
+    post_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await _list_profile_status_posts(db, viewer_user_id=user.id, post_id=post_id, limit=1)
+    if not result.get("items"):
+        raise HTTPException(status_code=404, detail="Bài viết không tồn tại.")
+    return result["items"][0]
+
 async def _get_public_profile_post(db: AsyncSession, post_id: int) -> ProfileStatusPost:
     post = (
         await db.execute(

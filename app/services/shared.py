@@ -561,6 +561,7 @@ async def _list_profile_status_posts(
     *,
     user_id: Optional[UUID] = None,
     viewer_user_id: Optional[UUID] = None,
+    post_id: Optional[int] = None,
     offset: int = 0,
     limit: int = DEFAULT_PROFILE_TIMELINE_PAGE_SIZE,
 ) -> dict:
@@ -579,6 +580,8 @@ async def _list_profile_status_posts(
     )
     if user_id is not None:
         query = query.where(ProfileStatusPost.user_id == user_id)
+    if post_id is not None:
+        query = query.where(ProfileStatusPost.id == post_id)
         # Profile timeline: sort by post creation time
         query = query.order_by(
             desc(ProfileStatusPost.created_at), desc(ProfileStatusPost.id)
