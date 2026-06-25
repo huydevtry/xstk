@@ -283,9 +283,45 @@
     return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
+  // -------------------------------------------------------------------------
+  // Panel positioning (portal — panel lives in <body>)
+  // -------------------------------------------------------------------------
+  function _positionPanel() {
+    const panel = document.getElementById('notif-panel');
+    const btn   = document.getElementById('notif-bell-btn');
+    if (!panel || !btn) return;
+
+    const rect = btn.getBoundingClientRect();
+    const vw   = window.innerWidth;
+
+    // Use consistent width (max 340px, or screen width minus padding on very small screens)
+    const panelW = Math.min(340, vw - 24);
+    const top = rect.bottom + 8;
+    
+    // Align to the right edge of the bell button
+    let right = vw - rect.right;
+    
+    // Clamp to ensure at least 12px margin from the right edge
+    if (right < 12) right = 12;
+    
+    // Clamp to ensure at least 12px margin from the left edge
+    const leftEdge = vw - right - panelW;
+    if (leftEdge < 12) {
+      right = vw - panelW - 12;
+    }
+
+    panel.style.position = 'fixed';
+    panel.style.top      = top + 'px';
+    panel.style.right    = right + 'px';
+    panel.style.left     = '';
+    panel.style.bottom   = '';
+    panel.style.width    = panelW + 'px';
+  }
+
   function openNotifPanel() {
     const panel = document.getElementById('notif-panel');
     if (!panel) return;
+    _positionPanel();
     panel.classList.remove('hidden');
     _notifOpen = true;
     loadNotifications();
@@ -384,6 +420,12 @@
     const readAllBtn  = document.getElementById('notif-read-all');
     const wrap        = document.getElementById('notif-wrap');
 
+    // --- Portal: move panel out of header to escape backdrop-filter stacking context ---
+    const panel = document.getElementById('notif-panel');
+    if (panel && panel.parentElement !== document.body) {
+      document.body.appendChild(panel);
+    }
+
     if (bellBtn) bellBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleNotifPanel(); });
     if (readAllBtn) readAllBtn.addEventListener('click', (e) => { e.stopPropagation(); markAllRead(); });
 
@@ -391,10 +433,17 @@
     const list = document.getElementById('notif-list');
     if (list) list.addEventListener('click', handleNotifItemClick);
 
-    // Close panel when clicking outside
+    // Close panel when clicking outside (check both wrap and panel since panel is now in body)
     document.addEventListener('click', (e) => {
-      if (_notifOpen && wrap && !wrap.contains(e.target)) closeNotifPanel();
+      if (!_notifOpen) return;
+      const panelEl = document.getElementById('notif-panel');
+      const outsideWrap  = !wrap  || !wrap.contains(e.target);
+      const outsidePanel = !panelEl || !panelEl.contains(e.target);
+      if (outsideWrap && outsidePanel) closeNotifPanel();
     });
+
+    // Reposition on resize (orientation change etc.)
+    window.addEventListener('resize', () => { if (_notifOpen) _positionPanel(); }, { passive: true });
 
     // 4. Fetch initial badge count (ALWAYS do this)
     loadNotifications();
