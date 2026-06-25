@@ -35,6 +35,7 @@ from dotenv import load_dotenv
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database import AsyncSessionLocal
 from app.models import Bet, Notification, ProfilePostComment, ProfileStatusPost, PushSubscription, User
 
 logger = logging.getLogger(__name__)
@@ -256,7 +257,7 @@ async def send_push_to_users(
 # ---------------------------------------------------------------------------
 
 async def notify_match_resolved(
-    db: AsyncSession,
+    db_session_ignored: AsyncSession,
     match,
     bets: list,
     users_by_id: dict,
@@ -266,38 +267,39 @@ async def notify_match_resolved(
         match_label = f"{match.home_team} vs {match.away_team}"
         score_label = f"{match.home_score} - {match.away_score}"
 
-        for bet in bets:
-            user = users_by_id.get(bet.user_id)
-            if not user:
-                continue
+        async with AsyncSessionLocal() as db:
+            for bet in bets:
+                user = users_by_id.get(bet.user_id)
+                if not user:
+                    continue
 
-            points_earned = bet.points_earned
-            if points_earned is None:
-                result_msg = f"Hoàn {bet.stake:,} điểm (kèo hòa)"
-                emoji = "🔄"
-            elif points_earned > bet.stake:
-                result_msg = f"Thắng +{points_earned - bet.stake:,} điểm 🎉"
-                emoji = "🏆"
-            elif points_earned == bet.stake:
-                result_msg = f"Hoàn {bet.stake:,} điểm (hòa vốn)"
-                emoji = "🤝"
-            else:
-                result_msg = f"Thua {bet.stake:,} điểm"
-                emoji = "😢"
+                points_earned = bet.points_earned
+                if points_earned is None:
+                    result_msg = f"Hoàn {bet.stake:,} điểm (kèo hòa)"
+                    emoji = "🔄"
+                elif points_earned > bet.stake:
+                    result_msg = f"Thắng +{points_earned - bet.stake:,} điểm 🎉"
+                    emoji = "🏆"
+                elif points_earned == bet.stake:
+                    result_msg = f"Hoàn {bet.stake:,} điểm (hòa vốn)"
+                    emoji = "🤝"
+                else:
+                    result_msg = f"Thua {bet.stake:,} điểm"
+                    emoji = "😢"
 
-            await send_push_to_users(
-                db,
-                user_ids=[user.id],
-                title=f"{emoji} Kết quả: {match_label}",
-                body=f"{score_label} — {result_msg}",
-                url="/",
-            )
+                await send_push_to_users(
+                    db,
+                    user_ids=[user.id],
+                    title=f"{emoji} Kết quả: {match_label}",
+                    body=f"{score_label} — {result_msg}",
+                    url="/",
+                )
     except Exception:
         logger.exception("Failed to send match-resolved push notifications.")
 
 
 async def notify_post_liked(
-    db: AsyncSession,
+    db_session_ignored: AsyncSession,
     post: ProfileStatusPost,
     actor: User,
 ) -> None:
@@ -306,51 +308,53 @@ async def notify_post_liked(
         if post.user_id == actor.id:
             return
         actor_name = actor.display_name or actor.email.split("@")[0]
-        await send_push_to_users(
-            db,
-            user_ids=[post.user_id],
-            title="❤️ Có người thích bài của bạn",
-            body=f"{actor_name} đã thích bài viết của bạn",
-            url="/community",
-        )
+        async with AsyncSessionLocal() as db:
+            await send_push_to_users(
+                db,
+                user_ids=[post.user_id],
+                title="❤️ Có người thích bài của bạn",
+                body=f"{actor_name} đã thích bài viết của bạn",
+                url="/community",
+            )
     except Exception:
         logger.exception("Failed to send post-liked push notification.")
 
 
 async def notify_post_commented(
-    db: AsyncSession,
+    db_session_ignored: AsyncSession,
     post: ProfileStatusPost,
     actor: User,
 ) -> None:
     """Push to post owner + all prior commenters when a new comment arrives."""
     try:
-        prior_commenter_ids_result = await db.execute(
-            select(ProfilePostComment.user_id)
-            .where(ProfilePostComment.post_id == post.id)
-            .distinct()
-        )
-        prior_commenter_ids = {row[0] for row in prior_commenter_ids_result.fetchall()}
-
-        recipient_ids = {post.user_id} | prior_commenter_ids
-        recipient_ids.discard(actor.id)
-
-        if not recipient_ids:
-            return
-
-        actor_name = actor.display_name or actor.email.split("@")[0]
-
-        push_tasks = []
-        for uid in recipient_ids:
-            if uid == post.user_id:
-                title = "💬 Bình luận mới trên bài của bạn"
-                body = f"{actor_name} đã bình luận vào bài của bạn"
-            else:
-                title = "💬 Bình luận mới"
-                body = f"{actor_name} cũng bình luận vào bài này"
-            push_tasks.append(
-                send_push_to_users(db, user_ids=[uid], title=title, body=body, url="/community")
+        async with AsyncSessionLocal() as db:
+            prior_commenter_ids_result = await db.execute(
+                select(ProfilePostComment.user_id)
+                .where(ProfilePostComment.post_id == post.id)
+                .distinct()
             )
+            prior_commenter_ids = {row[0] for row in prior_commenter_ids_result.fetchall()}
 
-        await asyncio.gather(*push_tasks, return_exceptions=True)
+            recipient_ids = {post.user_id} | prior_commenter_ids
+            recipient_ids.discard(actor.id)
+
+            if not recipient_ids:
+                return
+
+            actor_name = actor.display_name or actor.email.split("@")[0]
+
+            push_tasks = []
+            for uid in recipient_ids:
+                if uid == post.user_id:
+                    title = "💬 Bình luận mới trên bài của bạn"
+                    body = f"{actor_name} đã bình luận vào bài của bạn"
+                else:
+                    title = "💬 Bình luận mới"
+                    body = f"{actor_name} cũng bình luận vào bài này"
+                push_tasks.append(
+                    send_push_to_users(db, user_ids=[uid], title=title, body=body, url="/community")
+                )
+
+            await asyncio.gather(*push_tasks, return_exceptions=True)
     except Exception:
         logger.exception("Failed to send post-commented push notifications.")
