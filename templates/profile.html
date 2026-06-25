@@ -177,8 +177,8 @@
         <section class="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
             <div class="flex items-center gap-4">
                 <div class="avatar-wrapper">
-                    <div id="avatar-initials" class="avatar-initials" style="background:#38bdf8">??</div>
-                    <img id="avatar-img" class="avatar-img hidden" src="" alt="Avatar">
+                    <div id="avatar-initials" class="avatar-initials cursor-pointer" style="background:#38bdf8">??</div>
+                    <img id="avatar-img" class="avatar-img hidden cursor-pointer" src="" alt="Avatar">
                     <button class="avatar-edit-btn" id="open-avatar-modal" title="Đổi ảnh đại diện">
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828A2 2 0 019 16H7v-2a2 2 0 01.586-1.414z"/>
@@ -447,6 +447,18 @@
                     Lưu ảnh
                 </button>
             </div>
+        </div>
+    </div>
+
+    <div id="avatar-view-modal" class="hidden fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm overflow-hidden flex items-center justify-center p-4">
+        <div class="relative max-w-2xl w-full flex items-center justify-center">
+            <button id="close-avatar-view-modal" type="button" class="absolute -top-12 right-0 text-white/70 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors" title="Đóng">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+            <img id="avatar-view-img" src="" class="hidden max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl border-4 border-white/10">
+            <div id="avatar-view-initials" class="hidden w-64 h-64 sm:w-80 sm:h-80 rounded-full border-4 border-white/10 flex items-center justify-center text-6xl sm:text-7xl font-black text-white shadow-2xl">??</div>
         </div>
     </div>
 

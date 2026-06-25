@@ -944,6 +944,42 @@ function initAvatarModal() {
     });
 }
 
+function initAvatarViewModal() {
+    const modal = document.getElementById("avatar-view-modal");
+    const closeBtn = document.getElementById("close-avatar-view-modal");
+    const viewImg = document.getElementById("avatar-view-img");
+    const viewInitials = document.getElementById("avatar-view-initials");
+    const profileImg = document.getElementById("avatar-img");
+    const profileInitials = document.getElementById("avatar-initials");
+    if (!modal || !closeBtn || !viewImg || !viewInitials || !profileImg || !profileInitials) return;
+
+    const open = () => {
+        if (!profileData) return;
+        modal.classList.remove("hidden");
+        const avatarSrc = normalizeImageSrc(profileData.avatar_url);
+        if (avatarSrc) {
+            viewImg.src = avatarSrc;
+            viewImg.classList.remove("hidden");
+            viewInitials.classList.add("hidden");
+        } else {
+            viewInitials.textContent = profileData.initials || "??";
+            viewInitials.style.background = safeCssColor(profileData.avatar_color);
+            viewInitials.classList.remove("hidden");
+            viewImg.classList.add("hidden");
+        }
+    };
+    const close = () => {
+        modal.classList.add("hidden");
+    };
+
+    profileImg.addEventListener("click", open);
+    profileInitials.addEventListener("click", open);
+    closeBtn.addEventListener("click", close);
+    modal.addEventListener("click", event => {
+        if (event.target === modal) close();
+    });
+}
+
 function initNameModal() {
     const modal = document.getElementById("name-modal");
     const openBtn = document.getElementById("open-name-modal");
@@ -1030,6 +1066,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     initFeedMediaPicker();
     initGiphyPicker();
     initAvatarModal();
+    initAvatarViewModal();
     initNameModal();
     document.getElementById("timeline-load-more")?.addEventListener("click", () => fetchTimeline(false));
     document.getElementById("point-history-load-more")?.addEventListener("click", () => fetchPointHistory(false));
