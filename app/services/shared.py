@@ -579,9 +579,25 @@ async def _list_profile_status_posts(
     )
     if user_id is not None:
         query = query.where(ProfileStatusPost.user_id == user_id)
+        # Profile timeline: sort by post creation time
+        query = query.order_by(
+            desc(ProfileStatusPost.created_at), desc(ProfileStatusPost.id)
+        )
+    else:
+        # Community timeline: sort by latest comment time
+        latest_comment_time = (
+            select(func.max(ProfilePostComment.created_at))
+            .where(ProfilePostComment.post_id == ProfileStatusPost.id)
+            .correlate(ProfileStatusPost)
+            .scalar_subquery()
+        )
+        query = query.order_by(
+            desc(func.coalesce(latest_comment_time, ProfileStatusPost.created_at)),
+            desc(ProfileStatusPost.id)
+        )
+
     query = (
         query
-        .order_by(desc(ProfileStatusPost.created_at), desc(ProfileStatusPost.id))
         .offset(safe_offset)
         .limit(safe_limit + 1)
     )
