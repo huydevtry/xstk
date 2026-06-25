@@ -1,5 +1,6 @@
 (() => {
     const APP_TIME_ZONE = "Asia/Ho_Chi_Minh";
+    const COMMENT_COLLAPSE_LIMIT = 4;
 
     function escapeHtml(value) {
         return String(value ?? "").replace(/[&<>\"']/g, ch => ({
@@ -213,9 +214,29 @@
         const viewerLiked = Boolean(item?.viewer_liked);
         const likedUsers = Array.isArray(item?.liked_users) ? item.liked_users : [];
         const comments = Array.isArray(item?.comments) ? item.comments : [];
+        const hiddenComments = comments.length > COMMENT_COLLAPSE_LIMIT
+            ? comments.slice(0, comments.length - COMMENT_COLLAPSE_LIMIT)
+            : [];
+        const visibleComments = comments.length > COMMENT_COLLAPSE_LIMIT
+            ? comments.slice(-COMMENT_COLLAPSE_LIMIT)
+            : comments;
         const likeClasses = viewerLiked
             ? "border-rose-200 bg-rose-50 text-rose-600"
             : "border-slate-200 bg-white text-slate-500 hover:border-rose-200 hover:text-rose-500";
+        const collapseToggle = hiddenComments.length
+            ? `
+                <button
+                    type="button"
+                    class="text-xs font-semibold text-sky-600 transition hover:text-sky-700"
+                    data-timeline-action="toggle-comments"
+                    data-expanded="false"
+                    data-show-label="Xem thêm ${hiddenComments.length} bình luận"
+                    data-hide-label="Thu gọn bình luận"
+                >
+                    Xem thêm ${hiddenComments.length} bình luận
+                </button>
+            `
+            : "";
 
         return `
             <div class="mt-4 border-t border-slate-100 pt-3" data-timeline-interactions>
@@ -239,7 +260,9 @@
                     </span>
                 </div>
                 <div class="mt-3 space-y-2" data-timeline-comments>
-                    ${comments.map(renderComment).join("")}
+                    ${collapseToggle}
+                    ${hiddenComments.map(comment => `<div class="hidden" data-collapsed-comment>${renderComment(comment)}</div>`).join("")}
+                    ${visibleComments.map(renderComment).join("")}
                 </div>
                 <form class="mt-3 flex gap-2" data-timeline-action="comment-form" data-post-id="${escapeHtml(postId)}">
                     <input
@@ -257,6 +280,21 @@
             </div>
         `;
     }
+
+    document.addEventListener("click", event => {
+        const toggle = event.target.closest("[data-timeline-action='toggle-comments']");
+        if (!toggle) return;
+        const commentsHost = toggle.closest("[data-timeline-comments]");
+        if (!commentsHost) return;
+        const expanded = toggle.dataset.expanded === "true";
+        commentsHost.querySelectorAll("[data-collapsed-comment]").forEach(node => {
+            node.classList.toggle("hidden", expanded);
+        });
+        toggle.dataset.expanded = expanded ? "false" : "true";
+        toggle.textContent = expanded
+            ? (toggle.dataset.showLabel || "Xem thêm bình luận")
+            : (toggle.dataset.hideLabel || "Thu gọn bình luận");
+    });
 
     function renderEditButton(item) {
         if (!item?.can_edit) return "";

@@ -478,7 +478,7 @@ async def _get_profile_post_interactions(
     post_ids: list[int],
     *,
     viewer_user_id: Optional[UUID] = None,
-    comments_per_post: int = 3,
+    comments_per_post: Optional[int] = None,
 ) -> dict[int, dict]:
     if not post_ids:
         return {}
@@ -560,7 +560,7 @@ async def _get_profile_post_interactions(
     comments_by_post: dict[int, list[dict]] = {post_id: [] for post_id in post_ids}
     for row in comment_rows:
         post_comments = comments_by_post.setdefault(row.ProfilePostComment.post_id, [])
-        if len(post_comments) >= comments_per_post:
+        if comments_per_post is not None and len(post_comments) >= comments_per_post:
             continue
         post_comments.append(_serialize_profile_post_comment(row.ProfilePostComment, row.User))
 
