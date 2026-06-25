@@ -292,7 +292,7 @@ async def notify_match_resolved(
                     user_ids=[user.id],
                     title=f"{emoji} Kết quả: {match_label}",
                     body=f"{score_label} — {result_msg}",
-                    url="/",
+                    url=f"/?match={match.id}",
                 )
     except Exception:
         logger.exception("Failed to send match-resolved push notifications.")
@@ -314,7 +314,7 @@ async def notify_post_liked(
                 user_ids=[post.user_id],
                 title="❤️ Có người thích bài của bạn",
                 body=f"{actor_name} đã thích bài viết của bạn",
-                url="/community",
+                url=f"/community?post={post.id}",
             )
     except Exception:
         logger.exception("Failed to send post-liked push notification.")
@@ -342,6 +342,7 @@ async def notify_post_commented(
                 return
 
             actor_name = actor.display_name or actor.email.split("@")[0]
+            post_url = f"/community?post={post.id}"
 
             push_tasks = []
             for uid in recipient_ids:
@@ -352,7 +353,7 @@ async def notify_post_commented(
                     title = "💬 Bình luận mới"
                     body = f"{actor_name} cũng bình luận vào bài này"
                 push_tasks.append(
-                    send_push_to_users(db, user_ids=[uid], title=title, body=body, url="/community")
+                    send_push_to_users(db, user_ids=[uid], title=title, body=body, url=post_url)
                 )
 
             await asyncio.gather(*push_tasks, return_exceptions=True)

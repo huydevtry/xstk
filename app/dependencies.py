@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import Header, HTTPException, Depends
+from fastapi import Header, HTTPException, Depends, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -29,6 +29,21 @@ LOCAL_DEV_AUTH = _env_flag("LOCAL_DEV_AUTH")
 LOCAL_DEV_EMAIL = os.getenv("LOCAL_DEV_EMAIL", "dev_local_test@domain.com").strip().lower()
 # LOCAL_DEV_EMAIL = "demo_user_09@seed.local"
 
+_DEV_EMAIL_RE = __import__('re').compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
+
+
+def _dev_email_from_request(request: 'Request | None') -> str:
+    """
+    LOCAL_DEV_AUTH only: resolve which email to use.
+    Priority: cookie 'dev_user' > LOCAL_DEV_EMAIL env.
+    The cookie value must look like an email address.
+    """
+    if request is not None:
+        cookie_val = (request.cookies.get('dev_user') or '').strip().lower()
+        if cookie_val and _DEV_EMAIL_RE.match(cookie_val):
+            return cookie_val
+    return LOCAL_DEV_EMAIL
+
 
 def _load_admin_emails() -> set[str]:
     emails = _split_emails(os.getenv("ADMIN_EMAILS"))
@@ -40,7 +55,7 @@ def _utc_now_naive() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _normalize_identity(cf_email: str | None, cf_name: str | None, *, allow_anonymous: bool) -> tuple[str | None, str | None]:
+def _normalize_identity(cf_email: str | None, cf_name: str | None, *, allow_anonymous: bool, request: 'Request | None' = None) -> tuple[str | None, str | None]:
     if not cf_email:
         if not LOCAL_DEV_AUTH:
             if allow_anonymous:
@@ -49,10 +64,10 @@ def _normalize_identity(cf_email: str | None, cf_name: str | None, *, allow_anon
                 status_code=401,
                 detail="Yêu cầu truy cập thông qua Cloudflare Identity Gateway."
             )
-        cf_email = LOCAL_DEV_EMAIL
+        cf_email = _dev_email_from_request(request)
 
     normalized_email = cf_email.strip().lower()
-    normalized_name = (cf_name or "").strip() or None
+    normalized_name = (cf_name or '').strip() or None
     if normalized_name and len(normalized_name) > 30:
         normalized_name = normalized_name[:30].rstrip()
     return normalized_email, normalized_name
@@ -64,11 +79,13 @@ async def _resolve_user_record(
     cf_name: str | None,
     db: AsyncSession,
     allow_anonymous: bool,
+    request: Request | None = None,
 ) -> User | None:
     normalized_email, normalized_name = _normalize_identity(
         cf_email,
         cf_name,
         allow_anonymous=allow_anonymous,
+        request=request,
     )
     if not normalized_email:
         return None
@@ -115,6 +132,7 @@ async def _resolve_user_record(
 
 
 async def get_request_user(
+    request: Request,
     cf_email: str = Header(None, alias="Cf-Access-Authenticated-User-Email"),
     cf_name: str = Header(None, alias="Cf-Access-Authenticated-User-Name"),
     db: AsyncSession = Depends(get_db)
@@ -124,10 +142,12 @@ async def get_request_user(
         cf_name=cf_name,
         db=db,
         allow_anonymous=True,
+        request=request,
     )
 
 
 async def get_current_user(
+    request: Request,
     cf_email: str = Header(None, alias="Cf-Access-Authenticated-User-Email"),
     cf_name: str = Header(None, alias="Cf-Access-Authenticated-User-Name"),
     db: AsyncSession = Depends(get_db)
@@ -137,6 +157,7 @@ async def get_current_user(
         cf_name=cf_name,
         db=db,
         allow_anonymous=False,
+        request=request,
     )
     if user is None:
         raise HTTPException(

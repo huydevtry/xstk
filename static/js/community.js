@@ -482,5 +482,34 @@ document.addEventListener("DOMContentLoaded", () => {
     initFeedMediaPicker();
     initGiphyPicker();
     fetchCommunityViewer();
-    fetchCommunityTimeline(true);
+
+    // Deep-link từ notification: /community?post=<id>
+    const postParam = new URLSearchParams(window.location.search).get('post');
+    const targetPostId = postParam ? parseInt(postParam, 10) : null;
+
+    fetchCommunityTimeline(true).then(() => {
+        if (!targetPostId || !Number.isFinite(targetPostId)) return;
+
+        // Xoá param khỏi URL mà không reload trang
+        history.replaceState(null, '', '/community');
+
+        // Scroll đến bài viết và highlight nhẹ
+        const scrollToPost = () => {
+            const article = document.querySelector(`[data-timeline-post-id="${targetPostId}"]`);
+            if (!article) return;
+            article.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Highlight tạm thời
+            article.style.transition = 'box-shadow 0.3s ease, outline 0.3s ease';
+            article.style.outline = '2px solid #0ea5e9';
+            article.style.boxShadow = '0 0 0 4px rgba(14,165,233,0.15)';
+            setTimeout(() => {
+                article.style.outline = '';
+                article.style.boxShadow = '';
+            }, 2500);
+        };
+
+        // Thử ngay, nếu bài chưa render thì thử lại sau 500ms
+        scrollToPost();
+        setTimeout(scrollToPost, 600);
+    });
 });

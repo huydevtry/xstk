@@ -201,3 +201,23 @@ async def mark_all_read(
         .values(is_read=True)
     )
     await db.commit()
+
+
+@router.post("/api/v1/notifications/{notification_id}/read", status_code=204)
+async def mark_one_read(
+    notification_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark a single notification as read (only if it belongs to the current user)."""
+    from sqlalchemy import update
+    await db.execute(
+        update(Notification)
+        .where(
+            Notification.id == notification_id,
+            Notification.user_id == user.id,
+            Notification.is_read == False,  # noqa: E712
+        )
+        .values(is_read=True)
+    )
+    await db.commit()

@@ -246,8 +246,13 @@
 
       list.innerHTML = data.notifications.map(n => {
         const icon = _iconForTitle(n.title);
+        const url  = n.url || '/';
         return `
-          <a href="${n.url || '/'}" class="notif-item${n.is_read ? '' : ' unread'}" data-id="${n.id}">
+          <div role="button" tabindex="0"
+               class="notif-item${n.is_read ? '' : ' unread'}"
+               data-id="${n.id}"
+               data-url="${_esc(url)}"
+               data-read="${n.is_read ? '1' : '0'}">
             <div class="notif-item-icon">${icon}</div>
             <div class="notif-item-body">
               <div class="notif-item-title">${_esc(n.title)}</div>
@@ -255,7 +260,7 @@
               <div class="notif-item-time">${timeAgo(n.created_at)}</div>
             </div>
             ${n.is_read ? '' : '<div class="notif-unread-dot"></div>'}
-          </a>`;
+          </div>`;
       }).join('');
 
     } catch (err) {
@@ -303,6 +308,50 @@
     await loadNotifications();  // refresh badge + list
   }
 
+  async function markOneRead(notifId) {
+    try {
+      await fetch(`${API_NOTIF}/${notifId}/read`, { method: 'POST', credentials: 'include' });
+    } catch (e) {
+      WARN('markOneRead failed:', e);
+    }
+  }
+
+  async function handleNotifItemClick(e) {
+    const item = e.target.closest('[data-id][data-url]');
+    if (!item) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const notifId = item.dataset.id;
+    const url     = item.dataset.url;
+    const isRead  = item.dataset.read === '1';
+
+    // Optimistic UI: mark as read immediately
+    if (!isRead) {
+      item.classList.remove('unread');
+      item.dataset.read = '1';
+      const dot = item.querySelector('.notif-unread-dot');
+      if (dot) dot.remove();
+      // Update badge count
+      const badge = document.getElementById('notif-badge');
+      if (badge && !badge.classList.contains('hidden')) {
+        const cur = parseInt(badge.textContent, 10) || 1;
+        const next = cur - 1;
+        if (next <= 0) {
+          badge.classList.add('hidden');
+        } else {
+          badge.textContent = next > 99 ? '99+' : next;
+        }
+      }
+      // Fire-and-forget API call
+      markOneRead(notifId);
+    }
+
+    // Close panel then navigate
+    closeNotifPanel();
+    window.location.href = url;
+  }
+
   // -------------------------------------------------------------------------
   // Init
   // -------------------------------------------------------------------------
@@ -337,6 +386,10 @@
 
     if (bellBtn) bellBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleNotifPanel(); });
     if (readAllBtn) readAllBtn.addEventListener('click', (e) => { e.stopPropagation(); markAllRead(); });
+
+    // Notification item click — mark read + navigate
+    const list = document.getElementById('notif-list');
+    if (list) list.addEventListener('click', handleNotifItemClick);
 
     // Close panel when clicking outside
     document.addEventListener('click', (e) => {

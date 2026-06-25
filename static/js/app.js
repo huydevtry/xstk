@@ -190,6 +190,23 @@ async function initializeHomepage() {
     await fetchUpcomingMatches();
     startTicker();
     fetchLeaderboard();
+
+    // Deep-link từ notification: /?match=<id>
+    const matchParam = new URLSearchParams(window.location.search).get('match');
+    if (matchParam) {
+        const matchId = parseInt(matchParam, 10);
+        if (Number.isFinite(matchId)) {
+            // Xoá param khỏi URL mà không reload trang
+            const cleanUrl = window.location.pathname;
+            history.replaceState(null, '', cleanUrl);
+            // Mở modal chi tiết trận đấu
+            setTimeout(() => {
+                if (typeof openMatchDetail === 'function') {
+                    openMatchDetail(matchId, true);
+                }
+            }, 200);
+        }
+    }
 }
 
 async function fetchAppSettings() {
