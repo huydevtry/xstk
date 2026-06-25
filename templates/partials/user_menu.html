@@ -19,6 +19,19 @@
             </span>
             <span id="push-toggle-label" class="push-toggle-pill">...</span>
         </button>
+        <!-- PWA install button (hidden by default) -->
+        <button
+            id="pwa-install-btn"
+            type="button"
+            class="user-menu-item hidden mt-2 w-full flex items-center gap-2 rounded-2xl px-3 py-2.5 text-sm font-semibold text-slate-700 transition"
+        >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="opacity-60">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Cài đặt ứng dụng
+        </button>
         {% if viewer_is_admin %}
         <a href="/admin" class="user-menu-item mt-2 block rounded-2xl px-3 py-2.5 text-sm font-semibold text-sky-800 transition">Trang admin</a>
         {% endif %}

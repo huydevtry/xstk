@@ -1,3 +1,27 @@
+let deferredPrompt = null;
+
+// Listen for the beforeinstallprompt event (fired by browsers supporting custom install prompts)
+window.addEventListener("beforeinstallprompt", (e) => {
+    // Prevent the mini-infobar from appearing on mobile
+    e.preventDefault();
+    // Stash the event so it can be triggered later
+    deferredPrompt = e;
+    // Show the install button if the DOM is already loaded
+    const installBtn = document.getElementById("pwa-install-btn");
+    if (installBtn) {
+        installBtn.classList.remove("hidden");
+    }
+});
+
+// Hide the install button once the app has been successfully installed
+window.addEventListener("appinstalled", () => {
+    deferredPrompt = null;
+    const installBtn = document.getElementById("pwa-install-btn");
+    if (installBtn) {
+        installBtn.classList.add("hidden");
+    }
+});
+
 document.addEventListener("DOMContentLoaded", () => {
     const containers = Array.from(document.querySelectorAll("[data-user-menu]"));
     if (!containers.length) return;
@@ -33,6 +57,30 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     });
+
+    // Wire up PWA install button
+    const installBtn = document.getElementById("pwa-install-btn");
+    if (installBtn) {
+        // If the event has already fired, show the button
+        if (deferredPrompt) {
+            installBtn.classList.remove("hidden");
+        }
+
+        installBtn.addEventListener("click", async () => {
+            if (!deferredPrompt) return;
+            // Close the menu first for a clean UX
+            closeAllMenus();
+            // Show the install prompt
+            deferredPrompt.prompt();
+            // Wait for the user to respond to the prompt
+            const { outcome } = await deferredPrompt.userChoice;
+            console.info(`[PWA] User choice outcome: ${outcome}`);
+            // Clear the prompt (it can only be used once)
+            deferredPrompt = null;
+            // Hide the button
+            installBtn.classList.add("hidden");
+        });
+    }
 
     document.addEventListener("click", event => {
         const target = event.target;
