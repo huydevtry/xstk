@@ -315,10 +315,20 @@
         `;
     }
 
+    function renderAuthorBadge(badge) {
+        if (!badge) return "";
+        const colorClass = badge.color === "gold" ? "border-amber-200 bg-amber-50 text-amber-700" :
+            badge.color === "purple" ? "border-violet-200 bg-violet-50 text-violet-700" :
+            badge.color === "red" ? "border-rose-200 bg-rose-50 text-rose-700" :
+            "border-slate-200 bg-slate-50 text-slate-700";
+        return `<span class="inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${colorClass}">${escapeHtml(badge.emoji)} ${escapeHtml(badge.label)}</span>`;
+    }
+
     function createTimelineItemHtml(item, options = {}) {
         const author = item?.author || {};
         const authorHref = buildAuthorHref(author, options);
         const authorName = escapeHtml(author.display_name || author.name || "Người dùng");
+        const authorBadge = renderAuthorBadge(author.badge);
         const editedLabel = item?.is_edited
             ? `<span class="italic text-slate-400">Đã chỉnh sửa</span>`
             : "";
@@ -328,9 +338,10 @@
                 ${editedLabel}
             </div>
         `;
+        const authorMeta = `<div class="min-w-0"><div class="flex flex-wrap items-center gap-1.5"><div class="max-w-[11rem] truncate text-sm font-semibold text-slate-900">${authorName}</div>${authorBadge}</div>${timeNode}</div>`;
         const authorNode = authorHref
-            ? `<a href="${escapeHtml(authorHref)}" class="inline-flex min-w-0 items-center gap-3 hover:opacity-90">${renderAvatar(author)}<div class="min-w-0"><div class="truncate text-sm font-semibold text-slate-900">${authorName}</div>${timeNode}</div></a>`
-            : `<div class="inline-flex min-w-0 items-center gap-3">${renderAvatar(author)}<div class="min-w-0"><div class="truncate text-sm font-semibold text-slate-900">${authorName}</div>${timeNode}</div></div>`;
+            ? `<a href="${escapeHtml(authorHref)}" class="inline-flex min-w-0 items-center gap-3 hover:opacity-90">${renderAvatar(author)}${authorMeta}</a>`
+            : `<div class="inline-flex min-w-0 items-center gap-3">${renderAvatar(author)}${authorMeta}</div>`;
 
         const content = String(item?.content || "");
         const media = item?.media || null;

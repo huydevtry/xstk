@@ -63,6 +63,8 @@ class User(Base):
     is_approved = Column(Boolean, nullable=False, default=False, index=True)
     approved_at = Column(DateTime, nullable=True)
     approved_by_user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    last_seen_at = Column(DateTime, nullable=True)
+    previous_seen_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=_utc_now_naive)
 
 

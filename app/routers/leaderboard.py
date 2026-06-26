@@ -87,6 +87,7 @@ from app.services.shared import (
     _get_match_reaction_match_ids,
     _serialize_bet_history_entry,
     _user_badge_payload,
+    _build_user_badges_for_users,
     _build_user_badge_for_profile,
     _stable_pick,
     _format_reward_label,
@@ -216,39 +217,7 @@ async def get_leaderboard(
                 break
         return streak
 
-    # Kiểm tra "Nhà tiên tri": thắng khi chọn cửa thiểu số
-    contrarian_q = (
-        select(
-            Bet.user_id,
-            Bet.match_id,
-            Bet.choice,
-            Bet.points_earned,
-        )
-        .join(User, Bet.user_id == User.id)
-        .where(Bet.points_earned > 0)
-        .where(User.is_approved.is_(True))
-    )
-    contrarian_bets = (await db.execute(contrarian_q)).all()
-
-    # Đếm số người đặt mỗi cửa của mỗi trận
-    choice_count_q = (
-        select(Bet.match_id, Bet.choice, func.count(Bet.id).label("cnt"))
-        .join(User, Bet.user_id == User.id)
-        .where(User.is_approved.is_(True))
-        .group_by(Bet.match_id, Bet.choice)
-    )
-    choice_counts = (await db.execute(choice_count_q)).all()
-    choice_map = {}  # (match_id, choice) -> count
-    for cc in choice_counts:
-        choice_map[(cc.match_id, cc.choice)] = cc.cnt
-
-    contrarian_users = set()
-    for cb in contrarian_bets:
-        my_cnt = choice_map.get((cb.match_id, cb.choice), 1)
-        all_cnts = [v for (mid, ch), v in choice_map.items() if mid == cb.match_id]
-        if all_cnts and my_cnt == min(all_cnts) and my_cnt < max(all_cnts):
-            contrarian_users.add(str(cb.user_id))
-
+    user_badges = await _build_user_badges_for_users(db)
     leaderboard = []
     for idx, user in enumerate(users):
         rank = offset + idx + 1
@@ -256,19 +225,6 @@ async def get_leaderboard(
         streak_loss = calc_loss_streak(user_bets.get(uid, []))
         earned_24h = trend_map.get(uid, 0)
         trend = "up" if earned_24h > 0 else "down" if streak_loss > 0 else "neutral"
-        is_contrarian = uid in contrarian_users
-
-        # Badge logic
-        if rank == 1:
-            badge = {"label": "Đại gia", "emoji": "🤑", "color": "gold"}
-        elif rank == total_users:
-            badge = {"label": "Báo thủ", "emoji": "🐣", "color": "gray"}
-        elif is_contrarian:
-            badge = {"label": "Nhà tiên tri", "emoji": "🔮", "color": "purple"}
-        elif streak_loss >= 3:
-            badge = {"label": "Cứu rỗi", "emoji": "🙏", "color": "red"}
-        else:
-            badge = None
 
         leaderboard.append({
             "id": str(user.id),
@@ -282,7 +238,7 @@ async def get_leaderboard(
             "trend": trend,
             "earned_24h": earned_24h,
             "streak_loss": streak_loss,
-            "badge": badge,
+            "badge": user_badges.get(user.id),
         })
 
     next_offset = offset + len(leaderboard)

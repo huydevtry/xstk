@@ -18,6 +18,7 @@ import uuid as uuid_lib
 from uuid import UUID
 from pathlib import Path
 from decimal import Decimal, ROUND_DOWN
+from collections import defaultdict
 import html
 import os
 import re
@@ -436,6 +437,7 @@ def _serialize_profile_status_post(
     post: ProfileStatusPost,
     *,
     author: Optional[User] = None,
+    author_badge: Optional[dict] = None,
     match: Optional[Match] = None,
     bet: Optional[Bet] = None,
     viewer_user_id: Optional[UUID] = None,
@@ -452,6 +454,10 @@ def _serialize_profile_status_post(
         and viewer_user_id is not None
         and post.user_id == viewer_user_id
     )
+    author_payload = _user_avatar_payload(author) if author is not None else None
+    if author_payload is not None:
+        author_payload["badge"] = author_badge
+
     return {
         "id": post.id,
         "post_type": post_type,
@@ -461,7 +467,7 @@ def _serialize_profile_status_post(
         "edited_at": _serialize_utc_datetime(edited_at),
         "is_edited": edited_at is not None,
         "can_edit": can_edit,
-        "author": _user_avatar_payload(author) if author is not None else None,
+        "author": author_payload,
         "match": _serialize_profile_status_match(match),
         "reaction_result": _serialize_match_reaction_result(bet=bet, match=match)
         if post_type == PROFILE_POST_TYPE_MATCH_REACTION
@@ -619,6 +625,7 @@ async def _list_profile_status_posts(
     )
     rows = (await db.execute(query)).all()
     page_rows = rows[:safe_limit]
+    author_badges = await _build_user_badges_for_users(db)
     interactions = await _get_profile_post_interactions(
         db,
         [row.ProfileStatusPost.id for row in page_rows],
@@ -628,6 +635,7 @@ async def _list_profile_status_posts(
         _serialize_profile_status_post(
             row.ProfileStatusPost,
             author=row.User,
+            author_badge=author_badges.get(row.User.id),
             match=row.Match,
             bet=row.Bet,
             viewer_user_id=viewer_user_id,
@@ -1436,93 +1444,234 @@ def _serialize_bet_history_entry(
         "has_shared_reaction": has_shared_reaction,
     }
 
-def _user_badge_payload(
-    *,
-    rank: Optional[int],
-    total_users: int,
-    streak_loss: int,
-    is_contrarian: bool,
-) -> Optional[dict]:
-    if rank == 1:
-        return {"label": "Đại gia", "emoji": "🤑", "color": "gold"}
-    if rank == total_users:
-        return {"label": "Báo thủ", "emoji": "🐣", "color": "gray"}
-    if is_contrarian:
-        return {"label": "Nhà tiên tri", "emoji": "🔮", "color": "purple"}
-    if streak_loss >= 3:
-        return {"label": "Cứu rỗi", "emoji": "🙏", "color": "red"}
-    return None
+USER_BADGE_DEFINITIONS = [
+    ("sleeping", {"label": "Ngủ đông", "emoji": "💤", "color": "gray"}),
+    ("missing", {"label": "Mất tích bí ẩn", "emoji": "🕵️", "color": "gray"}),
+    ("rich", {"label": "Đại gia", "emoji": "🤑", "color": "gold"}),
+    ("bottom", {"label": "Báo thủ", "emoji": "🐣", "color": "gray"}),
+    ("hot_streak", {"label": "Phong độ hủy diệt", "emoji": "🔥", "color": "red"}),
+    ("comeback", {"label": "Người về bờ", "emoji": "🌊", "color": "purple"}),
+    ("salvation", {"label": "Cứu rỗi", "emoji": "🙏", "color": "red"}),
+    ("hard_hunter", {"label": "Thợ săn kèo khó", "emoji": "🎯", "color": "purple"}),
+    ("prophet", {"label": "Nhà tiên tri", "emoji": "🔮", "color": "purple"}),
+    ("money_printer", {"label": "Máy in 10đ", "emoji": "🖨️", "color": "gold"}),
+    ("small_ball", {"label": "Góp gió thành bão", "emoji": "🌱", "color": "gray"}),
+    ("newbie", {"label": "Tân binh máu lửa", "emoji": "⚡", "color": "gold"}),
+    ("veteran", {"label": "Lão làng", "emoji": "🎖️", "color": "gold"}),
+    ("steady", {"label": "Dân chơi đều tay", "emoji": "📅", "color": "gray"}),
+    ("taunter", {"label": "Chuyên gia cà khịa", "emoji": "📣", "color": "purple"}),
+    ("reporter", {"label": "Nhà báo sau trận", "emoji": "📰", "color": "gray"}),
+    ("awake", {"label": "Vừa tỉnh dậy", "emoji": "☕", "color": "gold"}),
+    ("slight_risk", {"label": "Liều nhẹ", "emoji": "🎲", "color": "red"}),
+    ("community", {"label": "Hòa nhập cộng đồng", "emoji": "🤝", "color": "purple"}),
+]
 
-async def _build_user_badge_for_profile(user: User, db: AsyncSession) -> Optional[dict]:
-    ordered_ids = (
+USER_BADGE_BY_KEY = {key: payload for key, payload in USER_BADGE_DEFINITIONS}
+USER_BADGE_PRIORITY = {key: idx for idx, (key, _) in enumerate(USER_BADGE_DEFINITIONS)}
+
+
+def _user_badge_payload(badge_key: Optional[str]) -> Optional[dict]:
+    if not badge_key:
+        return None
+    payload = USER_BADGE_BY_KEY.get(badge_key)
+    return dict(payload) if payload else None
+
+
+def _select_distributed_user_badges(
+    candidate_badges_by_user: dict[UUID, list[str]],
+    ordered_user_ids: list[UUID],
+) -> dict[UUID, str]:
+    selected_by_user: dict[UUID, str] = {}
+    selected_counts: dict[str, int] = {}
+
+    for user_id in ordered_user_ids:
+        candidates = [
+            badge_key
+            for badge_key in candidate_badges_by_user.get(user_id, [])
+            if badge_key in USER_BADGE_PRIORITY
+        ]
+        if not candidates:
+            continue
+
+        selected = min(
+            candidates,
+            key=lambda badge_key: (
+                selected_counts.get(badge_key, 0),
+                USER_BADGE_PRIORITY[badge_key],
+            ),
+        )
+        selected_by_user[user_id] = selected
+        selected_counts[selected] = selected_counts.get(selected, 0) + 1
+
+    return selected_by_user
+
+
+def _is_contrarian_win(bet: Bet, match_choice_counts: dict[int, dict[str, int]]) -> bool:
+    counts = match_choice_counts.get(bet.match_id, {})
+    if sum(counts.values()) < 5:
+        return False
+
+    my_count = counts.get(bet.choice, 0)
+    all_counts = list(counts.values())
+    return bool(all_counts and my_count == min(all_counts) and my_count < max(all_counts))
+
+
+def _candidate_badges_for_user(
+    user: User,
+    *,
+    rank: int,
+    total_users: int,
+    bets: list[Bet],
+    match_choice_counts: dict[int, dict[str, int]],
+    reaction_count: int,
+    top_24h_user_ids: set[UUID],
+    now: datetime,
+) -> list[str]:
+    candidates: list[str] = []
+    resolved_bets = [bet for bet in bets if bet.points_earned is not None]
+    recent_resolved = sorted(resolved_bets, key=lambda bet: bet.created_at, reverse=True)
+    winning_bets = [bet for bet in resolved_bets if int(bet.points_earned or 0) > 0]
+    contrarian_wins = sum(1 for bet in winning_bets if _is_contrarian_win(bet, match_choice_counts))
+    taunt_count = sum(1 for bet in bets if (bet.taunt_text or "").strip())
+    week_ago = now - timedelta(days=7)
+    recent_bet_days = {
+        bet.created_at.date()
+        for bet in bets
+        if bet.created_at is not None and bet.created_at >= week_ago
+    }
+    approved_at = user.approved_at or user.created_at
+    last_seen_at = user.last_seen_at
+    previous_seen_at = user.previous_seen_at
+
+    if last_seen_at is not None and last_seen_at <= now - timedelta(days=7):
+        candidates.append("sleeping")
+    if last_seen_at is not None and last_seen_at <= now - timedelta(days=2):
+        candidates.append("missing")
+    if rank == 1:
+        candidates.append("rich")
+    if rank == total_users and len(resolved_bets) >= 3:
+        candidates.append("bottom")
+    if len(recent_resolved) >= 3 and all(int(bet.points_earned or 0) > 0 for bet in recent_resolved[:3]):
+        candidates.append("hot_streak")
+    if (
+        len(recent_resolved) >= 3
+        and int(recent_resolved[0].points_earned or 0) > 0
+        and all(int(bet.points_earned or 0) == 0 for bet in recent_resolved[1:3])
+    ):
+        candidates.append("comeback")
+    if len(recent_resolved) >= 3 and all(int(bet.points_earned or 0) == 0 for bet in recent_resolved[:3]):
+        candidates.append("salvation")
+    if contrarian_wins >= 2:
+        candidates.append("hard_hunter")
+    if contrarian_wins >= 1:
+        candidates.append("prophet")
+    if user.id in top_24h_user_ids:
+        candidates.append("money_printer")
+    if resolved_bets:
+        average_stake = sum(int(bet.stake or 0) for bet in resolved_bets) / len(resolved_bets)
+        net_points = sum(int(bet.points_earned or 0) - int(bet.stake or 0) for bet in resolved_bets)
+        if len(resolved_bets) >= 8 and average_stake <= 10 and net_points > 0:
+            candidates.append("small_ball")
+    if approved_at is not None and approved_at > now - timedelta(days=7) and len(bets) >= 3:
+        candidates.append("newbie")
+    if approved_at is not None and approved_at <= now - timedelta(days=7) and len(bets) >= 10:
+        candidates.append("veteran")
+    if len(recent_bet_days) >= 3:
+        candidates.append("steady")
+    if taunt_count >= 5:
+        candidates.append("taunter")
+    if reaction_count >= 3:
+        candidates.append("reporter")
+    if (
+        previous_seen_at is not None
+        and last_seen_at is not None
+        and last_seen_at - previous_seen_at >= timedelta(days=2)
+        and any(bet.created_at >= now - timedelta(hours=24) for bet in bets)
+    ):
+        candidates.append("awake")
+    if any(int(bet.stake or 0) > 10 for bet in bets):
+        candidates.append("slight_risk")
+    if reaction_count >= 1 and taunt_count >= 1:
+        candidates.append("community")
+
+    return candidates
+
+async def _build_user_badges_for_users(db: AsyncSession) -> dict[UUID, dict]:
+    ordered_users = (
         await db.execute(
-            select(User.id)
+            select(User)
             .where(User.is_approved.is_(True))
             .order_by(desc(User.total_points), User.id.asc())
         )
     ).scalars().all()
-    total_users = len(ordered_ids)
+    total_users = len(ordered_users)
     if not total_users:
-        return None
+        return {}
 
-    rank = next((idx + 1 for idx, uid in enumerate(ordered_ids) if uid == user.id), None)
-    if rank is None:
-        return None
+    ordered_ids = [ordered_user.id for ordered_user in ordered_users]
+    ranks_by_user_id = {uid: idx + 1 for idx, uid in enumerate(ordered_ids)}
 
-    since = _utc_now_naive() - timedelta(hours=24)
-    trend_q = (
-        select(func.sum(Bet.points_earned))
-        .where(Bet.user_id == user.id, Bet.created_at >= since, Bet.points_earned > 0)
-    )
-    earned_24h = (await db.execute(trend_q)).scalar() or 0
-
-    recent_bets = (
+    all_bets = (
         await db.execute(
-            select(Bet.points_earned)
-            .where(Bet.user_id == user.id, Bet.points_earned.is_not(None))
-            .order_by(Bet.created_at.desc())
+            select(Bet)
+            .where(Bet.user_id.in_(ordered_ids))
+            .order_by(Bet.user_id.asc(), Bet.created_at.desc())
         )
     ).scalars().all()
+    bets_by_user_id: dict[UUID, list[Bet]] = defaultdict(list)
+    match_choice_counts: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    now = _utc_now_naive()
+    since_24h = now - timedelta(hours=24)
+    earned_24h_by_user_id: dict[UUID, int] = defaultdict(int)
 
-    streak_loss = 0
-    for earned in recent_bets:
-        if earned == 0:
-            streak_loss += 1
-        else:
-            break
+    for bet in all_bets:
+        bets_by_user_id[bet.user_id].append(bet)
+        match_choice_counts[bet.match_id][bet.choice] += 1
+        if bet.created_at >= since_24h and bet.points_earned is not None and int(bet.points_earned or 0) > 0:
+            earned_24h_by_user_id[bet.user_id] += int(bet.points_earned or 0)
 
-    winning_bets = (
+    max_earned_24h = max(earned_24h_by_user_id.values(), default=0)
+    top_24h_user_ids = {
+        uid
+        for uid, earned in earned_24h_by_user_id.items()
+        if earned == max_earned_24h and earned >= 10
+    }
+
+    reaction_rows = (
         await db.execute(
-            select(Bet.match_id, Bet.choice)
-            .where(Bet.user_id == user.id, Bet.points_earned > 0)
+            select(ProfileStatusPost.user_id, func.count(ProfileStatusPost.id).label("cnt"))
+            .where(
+                ProfileStatusPost.user_id.in_(ordered_ids),
+                ProfileStatusPost.post_type == PROFILE_POST_TYPE_MATCH_REACTION,
+            )
+            .group_by(ProfileStatusPost.user_id)
         )
     ).all()
-    is_contrarian = False
-    for bet in winning_bets:
-        counts = (
-            await db.execute(
-                select(Bet.choice, func.count(Bet.id).label("cnt"))
-                .join(User, Bet.user_id == User.id)
-                .where(Bet.match_id == bet.match_id)
-                .where(User.is_approved.is_(True))
-                .group_by(Bet.choice)
-            )
-        ).all()
-        if not counts:
-            continue
-        counts_map = {row.choice: row.cnt for row in counts}
-        my_cnt = counts_map.get(bet.choice, 0)
-        all_cnts = list(counts_map.values())
-        if all_cnts and my_cnt == min(all_cnts) and my_cnt < max(all_cnts):
-            is_contrarian = True
-            break
+    reaction_count_by_user_id = {row.user_id: int(row.cnt) for row in reaction_rows}
 
-    return _user_badge_payload(
-        rank=rank,
-        total_users=total_users,
-        streak_loss=streak_loss,
-        is_contrarian=is_contrarian,
-    )
+    candidate_badges_by_user = {
+        ordered_user.id: _candidate_badges_for_user(
+            ordered_user,
+            rank=ranks_by_user_id[ordered_user.id],
+            total_users=total_users,
+            bets=bets_by_user_id.get(ordered_user.id, []),
+            match_choice_counts=match_choice_counts,
+            reaction_count=reaction_count_by_user_id.get(ordered_user.id, 0),
+            top_24h_user_ids=top_24h_user_ids,
+            now=now,
+        )
+        for ordered_user in ordered_users
+    }
+    selected_badges_by_user = _select_distributed_user_badges(candidate_badges_by_user, ordered_ids)
+    return {
+        user_id: payload
+        for user_id, badge_key in selected_badges_by_user.items()
+        if (payload := _user_badge_payload(badge_key)) is not None
+    }
+
+
+async def _build_user_badge_for_profile(user: User, db: AsyncSession) -> Optional[dict]:
+    return (await _build_user_badges_for_users(db)).get(user.id)
 
 def _stable_pick(options, seed: str) -> str:
     if not options:

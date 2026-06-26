@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Header, HTTPException, Depends, Request
 from sqlalchemy.exc import IntegrityError
@@ -53,6 +53,25 @@ def _load_admin_emails() -> set[str]:
 
 def _utc_now_naive() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+async def _touch_approved_user_seen(user: User, db: AsyncSession) -> None:
+    now = _utc_now_naive()
+    last_seen = user.last_seen_at
+
+    if last_seen is None:
+        user.last_seen_at = now
+    elif now - last_seen >= timedelta(days=2):
+        user.previous_seen_at = last_seen
+        user.last_seen_at = now
+    elif now - last_seen >= timedelta(minutes=5):
+        user.last_seen_at = now
+    else:
+        return
+
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
 
 
 def _normalize_identity(cf_email: str | None, cf_name: str | None, *, allow_anonymous: bool, request: 'Request | None' = None) -> tuple[str | None, str | None]:
@@ -170,6 +189,7 @@ async def get_current_user(
             detail="Tài khoản của bạn đang chờ admin phê duyệt."
         )
 
+    await _touch_approved_user_seen(user, db)
     return user
 
 
