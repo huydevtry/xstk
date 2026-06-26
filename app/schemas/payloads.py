@@ -4,21 +4,21 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 from app.models import MatchStatus
-from app.services.shared import MAX_HOMEPAGE_ANNOUNCEMENT_LENGTH, MAX_PROFILE_COMMENT_LENGTH, MAX_PROFILE_STATUS_LENGTH
+from app.services.shared import MAX_HOMEPAGE_ANNOUNCEMENT_LENGTH, MAX_PROFILE_COMMENT_LENGTH, MAX_PROFILE_STATUS_LENGTH, MAX_TAUNT_LENGTH
 
 class BetPayload(BaseModel):
     match_id: int
     choice: Literal["HOME", "DRAW", "AWAY"]
     stake: int = Field(..., ge=1)
-    taunt_text: Optional[str] = None
+    taunt_text: Optional[str] = Field(default=None, max_length=MAX_TAUNT_LENGTH)
 
 class BetTauntPayload(BaseModel):
-    taunt_text: Optional[str] = None
+    taunt_text: Optional[str] = Field(default=None, max_length=MAX_TAUNT_LENGTH)
 
 class UpdateBetPayload(BaseModel):
     choice: Literal["HOME", "DRAW", "AWAY"]
     stake: Optional[int] = Field(default=None, ge=1)
-    taunt_text: Optional[str] = None
+    taunt_text: Optional[str] = Field(default=None, max_length=MAX_TAUNT_LENGTH)
 
 class ResolvePayload(BaseModel):
     home_score: int = Field(..., ge=0)
@@ -44,7 +44,6 @@ class AdminUserPointsPayload(BaseModel):
 
 class UpdateProfilePayload(BaseModel):
     display_name: Optional[str] = None
-    default_taunt: Optional[str] = None
     profile_status: Optional[str] = None
 
 class ProfileStatusPostPayload(BaseModel):

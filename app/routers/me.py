@@ -46,7 +46,6 @@ from app.services.shared import (
     _format_coins,
     _provided_fields,
     _normalize_display_name,
-    _normalize_optional_taunt,
     _normalize_optional_profile_status,
     _normalize_timeline_limit,
     _normalize_point_transaction_limit,
@@ -55,6 +54,7 @@ from app.services.shared import (
     _serialize_profile_status_post,
     _list_profile_status_posts,
     _get_profile_status_timeline,
+    _get_latest_profile_status_content,
     _create_profile_status_post,
     _has_match_reaction_post,
     _backfill_profile_status_timeline,
@@ -266,8 +266,6 @@ async def update_me(
         if len(name) > 30:
             raise HTTPException(status_code=400, detail="Tên hiển thị tối đa 30 ký tự.")
         user.display_name = name
-    if payload.default_taunt is not None:
-        user.default_taunt = _normalize_optional_taunt(payload.default_taunt)
     if payload.profile_status is not None:
         content = _normalize_optional_profile_status(payload.profile_status)
         if content is not None:
@@ -283,8 +281,7 @@ async def update_me(
         "avatar_url": user.avatar_url,
         "avatar_color": user.avatar_color or "#6366f1",
         "initials": (display_name[:2]).upper(),
-        "default_taunt": user.default_taunt,
-        "profile_status": user.profile_status,
+        "profile_status": await _get_latest_profile_status_content(db, user.id),
         "status_timeline": await _get_profile_status_timeline(db, user.id, viewer_user_id=user.id),
     }
 
@@ -297,8 +294,6 @@ async def update_me_v2(
     fields = _provided_fields(payload)
     if "display_name" in fields:
         user.display_name = _normalize_display_name(payload.display_name)
-    if "default_taunt" in fields:
-        user.default_taunt = _normalize_optional_taunt(payload.default_taunt)
     if "profile_status" in fields:
         content = _normalize_optional_profile_status(payload.profile_status)
         if content is not None:
@@ -315,8 +310,7 @@ async def update_me_v2(
         "avatar_url": user.avatar_url,
         "avatar_color": user.avatar_color or "#6366f1",
         "initials": _user_initials(user),
-        "default_taunt": user.default_taunt,
-        "profile_status": user.profile_status,
+        "profile_status": await _get_latest_profile_status_content(db, user.id),
         "status_timeline": await _get_profile_status_timeline(db, user.id, viewer_user_id=user.id),
     }
 
@@ -384,7 +378,7 @@ async def create_profile_status(
     return {
         "status_post": _serialize_profile_status_post(post, author=user, match=match, bet=bet_record, viewer_user_id=user.id),
         "status_timeline": await _get_profile_status_timeline(db, user.id, viewer_user_id=user.id),
-        "profile_status": user.profile_status,
+        "profile_status": await _get_latest_profile_status_content(db, user.id),
     }
 
 @router.patch("/api/v1/me/statuses/{post_id}")
@@ -461,7 +455,7 @@ async def edit_profile_status(
     return {
         "status_post": status_post,
         "status_timeline": await _get_profile_status_timeline(db, user.id, viewer_user_id=user.id),
-        "profile_status": user.profile_status,
+        "profile_status": await _get_latest_profile_status_content(db, user.id),
     }
 
 @router.post("/api/v1/me/avatar")

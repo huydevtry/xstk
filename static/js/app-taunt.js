@@ -788,7 +788,7 @@
 
         const tauntText = String(input.value || "").trim();
         if (tauntText.length > 30) {
-            showToast("Câu gáy tối đa 30 ký tự.", "error");
+            showToast("Gáy vừa thôi (30 ký tự)", "error");
             return;
         }
 
@@ -819,7 +819,7 @@
                 match_id: Number(matchId),
                 choice: data.choice || selectedChoice,
                 stake: data.stake ?? nextStake,
-                taunt_text: data.taunt_text ?? null,
+                taunt_text: data.taunt_text ?? (tauntText || null),
                 can_edit_taunt: true,
                 can_edit_stake: Boolean(data.can_edit_stake),
                 match_status: "upcoming",
@@ -850,7 +850,6 @@
 
         const maxStake = currentUser ? Number(currentUser.total_points || 0) : 1000;
         const effectiveMin = getEffectiveMinStake(minStake ?? selection.minStake);
-        const defaultTaunt = String(currentUser?.default_taunt || "");
 
         panel.classList.remove("hidden");
         if (maxStake < effectiveMin) {
@@ -864,17 +863,17 @@
 
         const tauntBlock = `
             <div class="bet-taunt-compact">
-                <label>Câu gáy cho trận này</label>
+                <label>Gáy:</label>
                 <textarea
                     id="taunt-${matchId}"
                     class="stake-taunt-input stake-taunt-input-compact"
                     rows="1"
                     maxlength="30"
-                    placeholder="Thêm 1 câu gáy ngắn gọn..."
+                    placeholder="Gáy cho kèo này..."
                     oninput="updateBetTauntCounter(${matchId})"
-                >${escapeHtml(defaultTaunt)}</textarea>
+                ></textarea>
                 <div class="mt-1 flex items-center justify-end text-xs text-slate-400">
-                    <span id="taunt-count-${matchId}">${defaultTaunt.length}/30</span>
+                    <span id="taunt-count-${matchId}">0/30</span>
                 </div>
             </div>`;
 
@@ -956,7 +955,7 @@
             return;
         }
         if (tauntText.length > 30) {
-            showToast("Câu gáy tối đa 30 ký tự.", "error");
+            showToast("Gáy vừa thôi (30 ký tự)", "error");
             return;
         }
 

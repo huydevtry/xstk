@@ -665,6 +665,24 @@ async def _get_profile_status_timeline(
     )
     return page["items"]
 
+
+async def _get_latest_profile_status_content(
+    db: AsyncSession,
+    user_id: UUID,
+) -> Optional[str]:
+    query = (
+        select(ProfileStatusPost.content)
+        .where(
+            ProfileStatusPost.user_id == user_id,
+            ProfileStatusPost.post_type != PROFILE_POST_TYPE_AVATAR_UPDATE,
+            func.trim(func.coalesce(ProfileStatusPost.content, "")) != "",
+        )
+        .order_by(desc(ProfileStatusPost.created_at), desc(ProfileStatusPost.id))
+        .limit(1)
+    )
+    return (await db.execute(query)).scalars().first()
+
+
 async def _create_profile_status_post(
     db: AsyncSession,
     user: User,
@@ -676,7 +694,7 @@ async def _create_profile_status_post(
     media_url: Optional[str] = None,
     media_content_type: Optional[str] = None,
     update_profile_status: bool = True,
-) -> ProfileStatusPost:
+    ) -> ProfileStatusPost:
     post = ProfileStatusPost(
         user_id=user.id,
         content=content,
@@ -686,10 +704,7 @@ async def _create_profile_status_post(
         media_content_type=media_content_type,
         created_at=created_at or _utc_now_naive(),
     )
-    if update_profile_status and content:
-        user.profile_status = content
     db.add(post)
-    db.add(user)
     return post
 
 async def _has_match_reaction_post(
@@ -712,39 +727,7 @@ async def _has_match_reaction_post(
     return existing is not None
 
 async def _backfill_profile_status_timeline(db: AsyncSession) -> None:
-    legacy_users = (
-        await db.execute(
-            select(User).where(User.profile_status.is_not(None))
-        )
-    ).scalars().all()
-    if not legacy_users:
-        return
-
-    existing_user_ids = {
-        user_id
-        for user_id in (
-            await db.execute(select(ProfileStatusPost.user_id).distinct())
-        ).scalars().all()
-        if user_id is not None
-    }
-
-    created = False
-    for user in legacy_users:
-        if user.id in existing_user_ids:
-            continue
-        content = _normalize_optional_profile_status(user.profile_status)
-        if content is None:
-            continue
-        await _create_profile_status_post(
-            db,
-            user,
-            content,
-            created_at=user.created_at or _utc_now_naive(),
-        )
-        created = True
-
-    if created:
-        await db.commit()
+    return None
 
 def _local_now_naive() -> datetime:
     """Return app-local time as naive datetime for match schedule comparisons."""
@@ -1969,8 +1952,7 @@ async def _build_profile_payload(
         "id": str(user.id),
         "email": user.email,
         "display_name": _user_display_name(user),
-        "default_taunt": user.default_taunt,
-        "profile_status": user.profile_status,
+        "profile_status": None,
         "total_points": user.total_points,
         "avatar_url": user.avatar_url,
         "avatar_color": user.avatar_color or "#6366f1",
@@ -1981,9 +1963,8 @@ async def _build_profile_payload(
         "can_edit": True,
     }
     if db is not None:
+        payload["profile_status"] = await _get_latest_profile_status_content(db, user.id)
         payload["status_timeline"] = await _get_profile_status_timeline(db, user.id, viewer_user_id=user.id)
-        if payload["status_timeline"]:
-            payload["profile_status"] = payload["status_timeline"][0]["content"]
         payload["features"] = await _get_feature_settings(db)
         if include_badge:
             payload["badge"] = await _build_user_badge_for_profile(user, db)

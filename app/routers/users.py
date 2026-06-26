@@ -157,7 +157,6 @@ async def get_public_user_profile(
     payload["can_edit"] = payload["is_self"]
     if not payload["is_self"]:
         payload["email"] = None
-        payload["default_taunt"] = None
     return payload
 
 @router.get("/api/v1/users/{user_id}/timeline")

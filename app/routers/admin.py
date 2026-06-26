@@ -297,7 +297,6 @@ async def approve_admin_user(
     if not user.is_approved:
         user.is_approved = True
         user.approved_at = _utc_now_naive()
-        user.approved_by_user_id = admin_user.id
         db.add(user)
         await db.commit()
         await db.refresh(user)

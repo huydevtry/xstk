@@ -175,6 +175,8 @@ async def place_bet(
     if user.total_points < payload.stake:
         raise HTTPException(status_code=400, detail="Số điểm không đủ.")
 
+    taunt_text = _normalize_optional_taunt(payload.taunt_text)
+
     # Kiểm tra đã cược chưa (1 user / 1 match)
     existing = (await db.execute(
         select(Bet).where(Bet.user_id == user.id, Bet.match_id == payload.match_id)
@@ -198,6 +200,7 @@ async def place_bet(
             match_id=payload.match_id,
             choice=payload.choice,
             stake=payload.stake,
+            taunt_text=taunt_text,
             points_earned=None,
         )
         db.add(bet)

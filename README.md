@@ -80,6 +80,42 @@ Các biến thường dùng:
 
 Khi chạy thật sau Cloudflare Access, app đọc email từ header Cloudflare. Người dùng mới sẽ ở trạng thái chờ duyệt cho đến khi admin phê duyệt.
 
+## Test Nhiều User Ở Local Bằng Cookie
+
+Khi `LOCAL_DEV_AUTH=true`, app lấy định danh local theo thứ tự ưu tiên:
+
+- Cookie `dev_user`
+- `LOCAL_DEV_EMAIL` trong file `.env`
+
+Điều này giúp bạn giả lập nhiều user khác nhau ngay trên máy local mà không cần sửa `.env` mỗi lần đổi tài khoản test.
+
+Ví dụ, nếu muốn đăng nhập local thành `member1@example.com`, mở DevTools trên trình duyệt và chạy:
+
+```js
+document.cookie = "dev_user=member1@example.com; path=/";
+location.reload();
+```
+
+Đổi sang user khác:
+
+```js
+document.cookie = "dev_user=member2@example.com; path=/";
+location.reload();
+```
+
+Xóa cookie để quay lại user mặc định từ `LOCAL_DEV_EMAIL`:
+
+```js
+document.cookie = "dev_user=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
+location.reload();
+```
+
+Lưu ý:
+
+- Giá trị `dev_user` phải là email hợp lệ, nếu không app sẽ bỏ qua và dùng `LOCAL_DEV_EMAIL`.
+- Nếu email nằm trong `ADMIN_EMAILS`, user local đó sẽ có quyền admin.
+- Nếu muốn test song song nhiều user, dùng cửa sổ ẩn danh hoặc trình duyệt khác để mỗi phiên có bộ cookie riêng.
+
 ## Các Trang Chính
 
 - `/` - trang dự đoán trận đấu.
