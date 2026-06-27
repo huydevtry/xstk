@@ -52,15 +52,6 @@ USER_NAMES = [
     "Le Quan",
 ]
 
-DEFAULT_TAUNTS = [
-    "vao cua nao thi vao, dung vao tam ly yeu",
-    "toi theo du lieu, khong theo dam dong",
-    "hom nay linh cam dang len",
-    "cua nay ma truot thi toi di uong tra da",
-    "khong can on ao, chi can dung cua",
-    "vao it thoi, thang deu moi vui",
-]
-
 BET_TAUNTS = [
     "len thuyen nhe tay",
     "vao cua nay vi so lieu dep",
@@ -365,7 +356,6 @@ def build_users(now: datetime) -> list[dict]:
                 "id": uuid.uuid4().hex,
                 "email": f"demo_user_{index:02d}@{SEED_DOMAIN}",
                 "display_name": name,
-                "default_taunt": DEFAULT_TAUNTS[index % len(DEFAULT_TAUNTS)],
                 "avatar_url": None,
                 "avatar_color": AVATAR_COLORS[(index - 1) % len(AVATAR_COLORS)],
                 "created_at": datetime(now.year, now.month, max(1, now.day - (index % 9 + 1)), 8 + (index % 7), 15, 0),
@@ -503,7 +493,6 @@ def build_posts(users: list[dict], bets: list[dict], match_map: dict[int, dict],
             )
 
         user_posts.sort(key=lambda item: (item["created_at"], item["post_type"]))
-        user["profile_status"] = user_posts[-1]["content"]
         posts.extend(user_posts)
     return posts
 
@@ -533,16 +522,14 @@ def insert_users(cursor: sqlite3.Cursor, users: list[dict]) -> None:
         cursor.execute(
             """
             INSERT INTO users (
-                id, email, display_name, default_taunt, profile_status,
+                id, email, display_name,
                 total_points, avatar_url, avatar_color, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user["id"],
                 user["email"],
                 user["display_name"],
-                user["default_taunt"],
-                user["profile_status"],
                 user["total_points"],
                 user["avatar_url"],
                 user["avatar_color"],

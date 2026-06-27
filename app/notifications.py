@@ -68,17 +68,24 @@ def _safe_user_label(user: User) -> str:
     return html.escape(user.email)
 
 
-async def notify_admin_new_user_pending(user: User) -> None:
-    bot_token, admin_chat_id, _ = _notification_env()
-    if not bot_token or not admin_chat_id:
-        return
-    text = (
+def build_admin_new_user_pending_text(user: User) -> str:
+    return (
         "User mới đang chờ phê duyệt\n"
         f"User: {_safe_user_label(user)}\n"
         f"Tổng điểm hiện tại: {int(user.total_points or 0):,}\n"
         f"Trang admin: {_admin_url()}"
     )
+
+
+async def send_telegram_message(text: str) -> None:
+    await asyncio.to_thread(_send_telegram_message_sync, text)
+
+
+async def notify_admin_new_user_pending(user: User) -> None:
+    bot_token, admin_chat_id, _ = _notification_env()
+    if not bot_token or not admin_chat_id:
+        return
     try:
-        await asyncio.to_thread(_send_telegram_message_sync, text)
+        await send_telegram_message(build_admin_new_user_pending_text(user))
     except Exception:
         logger.exception("Failed to send Telegram new-user notification.")

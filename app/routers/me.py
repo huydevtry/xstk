@@ -148,12 +148,38 @@ from app.services.shared import (
     get_current_user,
     get_admin_user,
     get_request_user,
-    ADMIN_EMAILS
+    ADMIN_EMAILS,
+    LOCAL_DEV_AUTH,
+    LOCAL_DEV_EMAIL
 )
 
 router = APIRouter()
 
 _EDIT_CONTENT_UNSET = object()
+
+
+@router.get("/api/v1/dev/auth-debug")
+async def get_dev_auth_debug(
+    request: Request,
+    user: Optional[User] = Depends(get_request_user),
+):
+    if not LOCAL_DEV_AUTH:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    cf_email = request.headers.get("Cf-Access-Authenticated-User-Email")
+    cookie_email = request.cookies.get("dev_user")
+    return {
+        "local_dev_auth": LOCAL_DEV_AUTH,
+        "local_dev_email": LOCAL_DEV_EMAIL,
+        "cookie_dev_user": cookie_email,
+        "cf_access_email": cf_email,
+        "effective_source": "cf_access_header" if cf_email else "dev_user_cookie" if cookie_email else "local_dev_email",
+        "effective_user": {
+            "email": user.email if user else None,
+            "is_approved": bool(user.is_approved) if user else None,
+            "is_admin": user.email.strip().lower() in ADMIN_EMAILS if user else False,
+        },
+    }
 
 def _parse_status_match_id(value) -> Optional[int]:
     if value is None:

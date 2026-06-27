@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint, Uuid
+from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint, Uuid
 
 from .database import Base
 
@@ -181,4 +181,25 @@ class Notification(Base):
     url = Column(String, nullable=False, default="/")
     icon = Column(String, nullable=False, default="/static/icons/icon-192.png")
     is_read = Column(Boolean, nullable=False, default=False)
+    delivered_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=_utc_now_naive, nullable=False, index=True)
+
+
+class NotificationJob(Base):
+    """Durable queue for notification work handled by the worker service."""
+    __tablename__ = "notification_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_type = Column(String, nullable=False, index=True)
+    status = Column(String, nullable=False, default="pending", index=True)
+    recipient_user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    payload_json = Column(Text, nullable=False)
+    attempts = Column(Integer, nullable=False, default=0)
+    max_attempts = Column(Integer, nullable=False, default=5)
+    next_attempt_at = Column(DateTime, nullable=True, index=True)
+    locked_at = Column(DateTime, nullable=True)
+    locked_by = Column(String, nullable=True)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=_utc_now_naive, nullable=False, index=True)
+    updated_at = Column(DateTime, default=_utc_now_naive, onupdate=_utc_now_naive, nullable=False)
+    sent_at = Column(DateTime, nullable=True)

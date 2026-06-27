@@ -4,6 +4,7 @@ push_service.py — Web Push notification service using VAPID + ecdsa (pure Pyth
 Strategy: "Empty push + SW fetch"
   - Server signs VAPID JWT using `ecdsa` (pure Python, no Rust/C required)
   - Sends an empty push to the browser's push endpoint (no encrypted payload)
+  - Notification worker sends an empty push to wake the Service Worker
   - Service Worker receives the push event, fetches /api/v1/push/latest-notification
     to get the actual notification content, then shows it to the user
 
@@ -11,13 +12,15 @@ This avoids the need for AES-128-GCM payload encryption (which requires `cryptog
 and cannot be built on 32-bit Linux servers without a Rust toolchain).
 
 Handles:
-- notify_match_resolved: push to users who bet on the match
-- notify_post_liked: push to post owner when liked
-- notify_post_commented: push to post owner + prior commenters
+- send_push_to_users: worker-side Web Push delivery
+- enqueue_match_resolved_notifications: queue result notifications
+- enqueue_post_liked_notification: queue post like notification
+- enqueue_post_commented_notifications: queue post comment notifications
 """
 
 import asyncio
 import base64
+import binascii
 import hashlib
 import json
 import logging
@@ -35,29 +38,27 @@ from dotenv import load_dotenv
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import AsyncSessionLocal
 from app.models import Bet, Notification, ProfilePostComment, ProfileStatusPost, PushSubscription, User
+from app.services.notification_queue import enqueue_web_push
 
 logger = logging.getLogger(__name__)
 ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 
+
+class PushConfigurationError(RuntimeError):
+    """Raised when local Web Push/VAPID configuration is invalid."""
+
 # ---------------------------------------------------------------------------
-# In-memory pending notification store (user_id → notification dict)
-# Cleared when the SW fetches it.  Single-process safe with asyncio.Lock.
+# Notification payloads are persisted so the web process and worker process
+# can communicate through the database instead of in-memory state.
 # ---------------------------------------------------------------------------
-_pending: dict[UUID, dict] = {}
-_pending_lock = asyncio.Lock()
 
 
 async def store_pending_notification(
     user_id: UUID, title: str, body: str, url: str = "/", icon: str = "/static/icons/icon-192.png",
     db: AsyncSession | None = None,
 ) -> None:
-    """Store a notification in-memory (for SW fetch) AND persist to DB inbox."""
-    async with _pending_lock:
-        _pending[user_id] = {"title": title, "body": body, "url": url, "icon": icon}
-
-    # Persist to notifications table so it appears in the inbox
+    """Persist a notification for the inbox and service-worker payload fetch."""
     if db is not None:
         try:
             notif = Notification(
@@ -67,12 +68,6 @@ async def store_pending_notification(
             await db.commit()
         except Exception:
             logger.exception("Failed to persist notification to DB for user %s", user_id)
-
-
-async def pop_pending_notification(user_id: UUID) -> dict | None:
-    """Return and remove the pending notification for a user (called by the SW fetch endpoint)."""
-    async with _pending_lock:
-        return _pending.pop(user_id, None)
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +80,10 @@ def _b64url_encode(data: bytes) -> str:
 
 def _b64url_decode(s: str) -> bytes:
     pad = "=" * (4 - len(s) % 4) if len(s) % 4 else ""
-    return base64.urlsafe_b64decode(s + pad)
+    try:
+        return base64.urlsafe_b64decode(s + pad)
+    except (binascii.Error, ValueError) as exc:
+        raise PushConfigurationError("Invalid VAPID_PRIVATE_KEY base64url encoding.") from exc
 
 
 def _load_signing_key(private_key_raw: str) -> _ecdsa.SigningKey:
@@ -102,8 +100,11 @@ def _load_signing_key(private_key_raw: str) -> _ecdsa.SigningKey:
     raw = _b64url_decode(s)
     if len(raw) == 32:
         return _ecdsa.SigningKey.from_string(raw, curve=_ecdsa.NIST256p, hashfunc=hashlib.sha256)
-    else:
+    if len(raw) == 121:
         return _ecdsa.SigningKey.from_der(raw, hashfunc=hashlib.sha256)
+    raise PushConfigurationError(
+        f"Invalid VAPID_PRIVATE_KEY length after decoding: {len(raw)} bytes."
+    )
 
 
 def _make_vapid_headers(endpoint: str, private_key_str: str, email: str) -> dict:
@@ -184,6 +185,8 @@ def _send_empty_push_sync(endpoint: str) -> bool:
 
         return True
 
+    except PushConfigurationError:
+        raise
     except Exception as exc:
         logger.warning("Push send error for %s…: %s", endpoint[:50], exc)
         return True  # Transient — keep subscription
@@ -248,114 +251,116 @@ async def send_push_to_users(
         if not ok:
             stale_endpoints.append(sub.endpoint)
 
-    await asyncio.gather(*[_push(sub) for sub in subscriptions], return_exceptions=True)
+    await asyncio.gather(*[_push(sub) for sub in subscriptions])
     await _delete_stale_subscriptions(db, stale_endpoints)
 
 
 # ---------------------------------------------------------------------------
-# Domain-specific notification helpers (unchanged logic, same API)
+# Domain-specific notification enqueue helpers
 # ---------------------------------------------------------------------------
 
-async def notify_match_resolved(
-    db_session_ignored: AsyncSession,
+async def enqueue_match_resolved_notifications(
+    db: AsyncSession,
     match,
     bets: list,
     users_by_id: dict,
 ) -> None:
-    """Push personalised match result to each bettor."""
+    """Queue personalised match result notifications for each bettor."""
     try:
         match_label = f"{match.home_team} vs {match.away_team}"
         score_label = f"{match.home_score} - {match.away_score}"
 
-        async with AsyncSessionLocal() as db:
-            for bet in bets:
-                user = users_by_id.get(bet.user_id)
-                if not user:
-                    continue
+        for bet in bets:
+            user = users_by_id.get(bet.user_id)
+            if not user:
+                continue
 
-                points_earned = bet.points_earned
-                if points_earned is None:
-                    result_msg = f"Hoàn {bet.stake:,} điểm (kèo hòa)"
-                    emoji = "🔄"
-                elif points_earned > bet.stake:
-                    result_msg = f"Thắng +{points_earned - bet.stake:,} điểm 🎉"
-                    emoji = "🏆"
-                elif points_earned == bet.stake:
-                    result_msg = f"Hoàn {bet.stake:,} điểm (hòa vốn)"
-                    emoji = "🤝"
-                else:
-                    result_msg = f"Thua {bet.stake:,} điểm"
-                    emoji = "😢"
+            points_earned = bet.points_earned
+            if points_earned is None:
+                result_msg = f"Hoàn {bet.stake:,} điểm (kèo hòa)"
+                emoji = "🔄"
+            elif points_earned > bet.stake:
+                result_msg = f"Thắng +{points_earned - bet.stake:,} điểm 🎉"
+                emoji = "🏆"
+            elif points_earned == bet.stake:
+                result_msg = f"Hoàn {bet.stake:,} điểm (hòa vốn)"
+                emoji = "🤝"
+            else:
+                result_msg = f"Thua {bet.stake:,} điểm"
+                emoji = "😢"
 
-                await send_push_to_users(
-                    db,
-                    user_ids=[user.id],
-                    title=f"{emoji} Kết quả: {match_label}",
-                    body=f"{score_label} — {result_msg}",
-                    url=f"/?match={match.id}",
-                )
+            await enqueue_web_push(
+                db,
+                user_id=user.id,
+                title=f"{emoji} Kết quả: {match_label}",
+                body=f"{score_label} — {result_msg}",
+                url=f"/?match={match.id}",
+                commit=False,
+            )
+        await db.commit()
     except Exception:
-        logger.exception("Failed to send match-resolved push notifications.")
+        logger.exception("Failed to enqueue match-resolved push notifications.")
 
 
-async def notify_post_liked(
-    db_session_ignored: AsyncSession,
+async def enqueue_post_liked_notification(
+    db: AsyncSession,
     post: ProfileStatusPost,
     actor: User,
 ) -> None:
-    """Push to post owner when someone likes their post (not self-like)."""
+    """Queue a push to the post owner when someone likes their post."""
     try:
         if post.user_id == actor.id:
             return
         actor_name = actor.display_name or actor.email.split("@")[0]
-        async with AsyncSessionLocal() as db:
-            await send_push_to_users(
-                db,
-                user_ids=[post.user_id],
-                title="❤️ Có người thích bài của bạn",
-                body=f"{actor_name} đã thích bài viết của bạn",
-                url=f"/community?post={post.id}",
-            )
+        await enqueue_web_push(
+            db,
+            user_id=post.user_id,
+            title="❤️ Có người thích bài của bạn",
+            body=f"{actor_name} đã thích bài viết của bạn",
+            url=f"/community?post={post.id}",
+        )
     except Exception:
-        logger.exception("Failed to send post-liked push notification.")
+        logger.exception("Failed to enqueue post-liked push notification.")
 
 
-async def notify_post_commented(
-    db_session_ignored: AsyncSession,
+async def enqueue_post_commented_notifications(
+    db: AsyncSession,
     post: ProfileStatusPost,
     actor: User,
 ) -> None:
-    """Push to post owner + all prior commenters when a new comment arrives."""
+    """Queue pushes to the post owner and prior commenters."""
     try:
-        async with AsyncSessionLocal() as db:
-            prior_commenter_ids_result = await db.execute(
-                select(ProfilePostComment.user_id)
-                .where(ProfilePostComment.post_id == post.id)
-                .distinct()
+        prior_commenter_ids_result = await db.execute(
+            select(ProfilePostComment.user_id)
+            .where(ProfilePostComment.post_id == post.id)
+            .distinct()
+        )
+        prior_commenter_ids = {row[0] for row in prior_commenter_ids_result.fetchall()}
+
+        recipient_ids = {post.user_id} | prior_commenter_ids
+        recipient_ids.discard(actor.id)
+
+        if not recipient_ids:
+            return
+
+        actor_name = actor.display_name or actor.email.split("@")[0]
+        post_url = f"/community?post={post.id}"
+
+        for uid in recipient_ids:
+            if uid == post.user_id:
+                title = "💬 Bình luận mới trên bài của bạn"
+                body = f"{actor_name} đã bình luận vào bài của bạn"
+            else:
+                title = "💬 Bình luận mới"
+                body = f"{actor_name} cũng bình luận vào bài này"
+            await enqueue_web_push(
+                db,
+                user_id=uid,
+                title=title,
+                body=body,
+                url=post_url,
+                commit=False,
             )
-            prior_commenter_ids = {row[0] for row in prior_commenter_ids_result.fetchall()}
-
-            recipient_ids = {post.user_id} | prior_commenter_ids
-            recipient_ids.discard(actor.id)
-
-            if not recipient_ids:
-                return
-
-            actor_name = actor.display_name or actor.email.split("@")[0]
-            post_url = f"/community?post={post.id}"
-
-            push_tasks = []
-            for uid in recipient_ids:
-                if uid == post.user_id:
-                    title = "💬 Bình luận mới trên bài của bạn"
-                    body = f"{actor_name} đã bình luận vào bài của bạn"
-                else:
-                    title = "💬 Bình luận mới"
-                    body = f"{actor_name} cũng bình luận vào bài này"
-                push_tasks.append(
-                    send_push_to_users(db, user_ids=[uid], title=title, body=body, url=post_url)
-                )
-
-            await asyncio.gather(*push_tasks, return_exceptions=True)
+        await db.commit()
     except Exception:
-        logger.exception("Failed to send post-commented push notifications.")
+        logger.exception("Failed to enqueue post-commented push notifications.")

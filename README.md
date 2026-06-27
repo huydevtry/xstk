@@ -64,6 +64,39 @@ http://127.0.0.1:8000
 
 Database SQLite sẽ được tạo tự động tại `betting_db.db` khi app chạy.
 
+## Cách Chạy App
+
+Từ bản tách notify worker, app nên chạy bằng 2 process cùng source code và cùng file `.env`:
+
+- Web app: nhận request, xử lý nghiệp vụ, ghi notification job.
+- Notify worker: đọc `notification_jobs` và gửi Web Push/Telegram ở nền.
+
+Chạy local bằng 2 terminal:
+
+Terminal 1:
+
+```bash
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --reload
+```
+
+Terminal 2:
+
+```bash
+python scripts/notification_worker.py
+```
+
+Khi chạy production bằng systemd, tạo 2 service riêng:
+
+```text
+xstk-web.service
+  -> uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
+
+xstk-notify.service
+  -> python scripts/notification_worker.py
+```
+
+Với SQLite, vẫn giữ web app ở `--workers 1`. Notify worker có thể tune nhẹ bằng các biến `NOTIFICATION_WORKER_*` bên dưới.
+
 ## Cấu Hình Môi Trường
 
 Các biến thường dùng:
@@ -77,6 +110,10 @@ Các biến thường dùng:
 | `GIPHY_API_KEY` | API key để mở nút chọn GIF từ GIPHY trong composer. |
 | `TELEGRAM_BOT_TOKEN` | Token bot Telegram, tùy chọn. |
 | `TELEGRAM_ADMIN_CHAT_ID` | Chat ID nhận thông báo user mới, tùy chọn. |
+| `NOTIFICATION_WORKER_BATCH_SIZE` | Số job notify lấy mỗi vòng. Mặc định khuyến nghị: `10`. |
+| `NOTIFICATION_WORKER_CONCURRENCY` | Số job gửi song song trong notify worker. Mặc định khuyến nghị: `3`. |
+| `NOTIFICATION_WORKER_POLL_INTERVAL_SECONDS` | Thời gian worker nghỉ khi không có job. Mặc định khuyến nghị: `2`. |
+| `NOTIFICATION_WORKER_STALE_AFTER_SECONDS` | Thời gian coi job `processing` là stale để đưa về hàng đợi. Mặc định khuyến nghị: `300`. |
 
 Khi chạy thật sau Cloudflare Access, app đọc email từ header Cloudflare. Người dùng mới sẽ ở trạng thái chờ duyệt cho đến khi admin phê duyệt.
 

@@ -14,9 +14,10 @@ Endpoints:
 import logging
 import os
 from pathlib import Path
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,7 +25,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Notification, PushSubscription, User
-from app.services.push_service import pop_pending_notification
 
 logger = logging.getLogger(__name__)
 ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
@@ -35,6 +35,10 @@ router = APIRouter()
 def _vapid_public_key() -> str:
     load_dotenv(ENV_PATH, override=False)
     return os.getenv("VAPID_PUBLIC_KEY", "").strip()
+
+
+def _utc_now_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 # ---------------------------------------------------------------------------
@@ -124,17 +128,37 @@ async def unsubscribe_push(
 @router.get("/api/v1/push/latest-notification")
 async def get_latest_notification(
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Called by the Service Worker after receiving an empty push.
-    Returns the pending notification payload for this user and clears it.
+    Returns the newest undelivered notification payload for this user and marks it delivered.
     Returns 204 No Content if there is nothing pending (SW should stay silent).
     """
-    notification = await pop_pending_notification(user.id)
+    notification = (
+        await db.execute(
+            select(Notification)
+            .where(
+                Notification.user_id == user.id,
+                Notification.delivered_at.is_(None),
+            )
+            .order_by(Notification.created_at.desc())
+            .limit(1)
+        )
+    ).scalars().first()
     if not notification:
-        from fastapi.responses import Response
         return Response(status_code=204)
-    return notification
+
+    notification.delivered_at = _utc_now_naive()
+    db.add(notification)
+    await db.commit()
+
+    return {
+        "title": notification.title,
+        "body": notification.body,
+        "url": notification.url,
+        "icon": notification.icon,
+    }
 
 
 @router.get("/api/v1/push/status")

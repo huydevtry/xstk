@@ -1,5 +1,4 @@
 from fastapi import APIRouter
-import asyncio
 from app.services import push_service
 
 from app.schemas.payloads import (
@@ -588,10 +587,7 @@ async def resolve_match(
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-    # Fire push notifications in background (non-blocking)
-    asyncio.create_task(
-        push_service.notify_match_resolved(db, match, bets, users_by_id)
-    )
+    await push_service.enqueue_match_resolved_notifications(db, match, bets, users_by_id)
 
     return {
         "message": f"Đã giải trận. Kết quả kèo: {winning_choice}.",

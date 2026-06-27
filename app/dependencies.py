@@ -7,7 +7,7 @@ from sqlalchemy.future import select
 from dotenv import load_dotenv
 from app.database import get_db
 from app.models import User, AVATAR_COLORS
-from app.notifications import notify_admin_new_user_pending
+from app.services.notification_queue import enqueue_admin_new_user_pending
 import os
 import random
 
@@ -145,7 +145,7 @@ async def _resolve_user_record(
 
     await db.refresh(user)
     if created_pending_user:
-        await notify_admin_new_user_pending(user)
+        await enqueue_admin_new_user_pending(db, user)
 
     return user
 

@@ -1,5 +1,4 @@
 from fastapi import APIRouter
-import asyncio
 from app.services import push_service
 
 from app.schemas.payloads import (
@@ -229,7 +228,7 @@ async def toggle_community_post_like(
     # Push notification only when liking (not un-liking)
     if not existing:
         post = await _get_public_profile_post(db, post_id)
-        asyncio.create_task(push_service.notify_post_liked(db, post, user))
+        await push_service.enqueue_post_liked_notification(db, post, user)
 
     return result
 
@@ -253,6 +252,6 @@ async def create_community_post_comment(
 
     # Push notification to post owner + prior commenters
     post = await _get_public_profile_post(db, post_id)
-    asyncio.create_task(push_service.notify_post_commented(db, post, user))
+    await push_service.enqueue_post_commented_notifications(db, post, user)
 
     return result

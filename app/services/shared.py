@@ -38,7 +38,7 @@ from app.models import (
     PointTransactionType,
     AppSetting,
 )
-from app.dependencies import get_current_user, get_admin_user, get_request_user, ADMIN_EMAILS
+from app.dependencies import get_current_user, get_admin_user, get_request_user, ADMIN_EMAILS, LOCAL_DEV_AUTH, LOCAL_DEV_EMAIL
 
 logger = logging.getLogger(__name__)
 
