@@ -194,27 +194,9 @@ def _send_empty_push_sync(endpoint: str) -> bool:
 
     try:
         started = time.perf_counter()
-        # TEMP_NOTIFICATION_JOB_LOG: remove after enqueue timing is verified.
-        print(
-            "TEMP_NOTIFICATION_JOB_LOG",
-            f"push_http_start_kind={endpoint_kind}",
-            f"host={endpoint_host}",
-            f"endpoint_prefix={endpoint[:60]}",
-            flush=True,
-        )
         headers = _make_vapid_headers(endpoint, private_key, claims_email)
         resp = _post_web_push(endpoint, headers)
         elapsed_ms = int((time.perf_counter() - started) * 1000)
-        # TEMP_NOTIFICATION_JOB_LOG: remove after enqueue timing is verified.
-        print(
-            "TEMP_NOTIFICATION_JOB_LOG",
-            f"push_http_done_kind={endpoint_kind}",
-            f"host={endpoint_host}",
-            f"status_code={resp.status_code}",
-            f"elapsed_ms={elapsed_ms}",
-            f"endpoint_prefix={endpoint[:60]}",
-            flush=True,
-        )
 
         if resp.status_code in (404, 410):
             logger.info("Stale subscription removed: %s…", endpoint[:50])
@@ -229,16 +211,6 @@ def _send_empty_push_sync(endpoint: str) -> bool:
         raise
     except Exception as exc:
         elapsed_ms = int((time.perf_counter() - started) * 1000) if "started" in locals() else -1
-        # TEMP_NOTIFICATION_JOB_LOG: remove after enqueue timing is verified.
-        print(
-            "TEMP_NOTIFICATION_JOB_LOG",
-            f"push_http_error_kind={endpoint_kind}",
-            f"host={endpoint_host}",
-            f"elapsed_ms={elapsed_ms}",
-            f"error={type(exc).__name__}:{exc}",
-            f"endpoint_prefix={endpoint[:60]}",
-            flush=True,
-        )
         logger.warning("Push send error for %s…: %s", endpoint[:50], exc)
         return True  # Transient — keep subscription
 
@@ -287,26 +259,12 @@ async def send_push_to_users(
             select(PushSubscription).where(PushSubscription.user_id.in_(user_ids))
         )
     ).scalars().all()
-    # TEMP_NOTIFICATION_JOB_LOG: remove after enqueue timing is verified.
-    print(
-        "TEMP_NOTIFICATION_JOB_LOG",
-        f"send_push_to_users user_ids={','.join(str(uid) for uid in user_ids)}",
-        f"subscriptions={len(subscriptions)}",
-        flush=True,
-    )
 
     # Persist to inbox DB + in-memory pending store for each user
     for uid in user_ids:
         await store_pending_notification(uid, title=title, body=body, url=url, icon=icon, db=db)
 
     if not subscriptions:
-        # TEMP_NOTIFICATION_JOB_LOG: remove after enqueue timing is verified.
-        print(
-            "TEMP_NOTIFICATION_JOB_LOG",
-            "send_push_to_users no_subscriptions",
-            f"user_ids={','.join(str(uid) for uid in user_ids)}",
-            flush=True,
-        )
         return
 
     stale_endpoints: list[str] = []
@@ -317,13 +275,6 @@ async def send_push_to_users(
             stale_endpoints.append(sub.endpoint)
 
     await asyncio.gather(*[_push(sub) for sub in subscriptions])
-    # TEMP_NOTIFICATION_JOB_LOG: remove after enqueue timing is verified.
-    print(
-        "TEMP_NOTIFICATION_JOB_LOG",
-        f"send_push_to_users all_endpoint_tasks_done subscriptions={len(subscriptions)}",
-        f"stale_endpoints={len(stale_endpoints)}",
-        flush=True,
-    )
     await _delete_stale_subscriptions(db, stale_endpoints)
 
 
@@ -370,15 +321,6 @@ async def enqueue_match_resolved_notifications(
                 commit=False,
             )
         await db.commit()
-        # TEMP_NOTIFICATION_JOB_LOG: remove after enqueue timing is verified.
-        print(
-            "TEMP_NOTIFICATION_JOB_LOG",
-            f"committed_at={datetime.now(timezone.utc).isoformat()}",
-            f"kind=match_resolved",
-            f"match_id={match.id}",
-            f"recipients={len(bets)}",
-            flush=True,
-        )
     except Exception:
         logger.exception("Failed to enqueue match-resolved push notifications.")
 
@@ -443,14 +385,5 @@ async def enqueue_post_commented_notifications(
                 commit=False,
             )
         await db.commit()
-        # TEMP_NOTIFICATION_JOB_LOG: remove after enqueue timing is verified.
-        print(
-            "TEMP_NOTIFICATION_JOB_LOG",
-            f"committed_at={datetime.now(timezone.utc).isoformat()}",
-            f"kind=post_commented",
-            f"post_id={post.id}",
-            f"recipients={len(recipient_ids)}",
-            flush=True,
-        )
     except Exception:
         logger.exception("Failed to enqueue post-commented push notifications.")
