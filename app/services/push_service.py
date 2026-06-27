@@ -44,6 +44,14 @@ from app.services.notification_queue import enqueue_web_push
 
 logger = logging.getLogger(__name__)
 ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+WEB_PUSH_TIMEOUT_SECONDS = 10.0
+
+
+def _env_enabled(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 class PushConfigurationError(RuntimeError):
@@ -158,6 +166,15 @@ def _push_env() -> tuple[str, str]:
     return private_key, claims_email
 
 
+def _post_web_push(endpoint: str, headers: dict[str, str]) -> httpx.Response:
+    timeout = httpx.Timeout(WEB_PUSH_TIMEOUT_SECONDS)
+    if _env_enabled("WEB_PUSH_FORCE_IPV4", default=True):
+        transport = httpx.HTTPTransport(local_address="0.0.0.0")
+        with httpx.Client(transport=transport, timeout=timeout) as client:
+            return client.post(endpoint, headers=headers)
+    return httpx.post(endpoint, headers=headers, timeout=timeout)
+
+
 # ---------------------------------------------------------------------------
 # Core send — empty push (no encrypted payload)
 # ---------------------------------------------------------------------------
@@ -186,7 +203,7 @@ def _send_empty_push_sync(endpoint: str) -> bool:
             flush=True,
         )
         headers = _make_vapid_headers(endpoint, private_key, claims_email)
-        resp = httpx.post(endpoint, headers=headers, timeout=10.0)
+        resp = _post_web_push(endpoint, headers)
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         # TEMP_NOTIFICATION_JOB_LOG: remove after enqueue timing is verified.
         print(

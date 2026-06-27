@@ -1,9 +1,11 @@
 import asyncio
 import html
+import json
 import logging
 import os
 import ssl
 import urllib.parse
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -35,6 +37,22 @@ def _notification_ssl_context() -> ssl.SSLContext:
     return ssl.create_default_context(cafile=cafile)
 
 
+def _describe_telegram_http_error(exc: urllib.error.HTTPError) -> str:
+    details = f"HTTP {exc.code}"
+    try:
+        raw_body = exc.read().decode("utf-8", "replace")
+    except Exception:
+        return details
+    if not raw_body:
+        return details
+    try:
+        payload = json.loads(raw_body)
+    except json.JSONDecodeError:
+        return f"{details}: {raw_body}"
+    description = str(payload.get("description", "")).strip()
+    return f"{details}: {description}" if description else details
+
+
 def _send_telegram_message_sync(text: str) -> None:
     bot_token, admin_chat_id, _ = _notification_env()
     if not bot_token or not admin_chat_id:
@@ -52,8 +70,13 @@ def _send_telegram_message_sync(text: str) -> None:
         method="POST",
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
-    with urllib.request.urlopen(req, timeout=8, context=ssl_context) as response:
-        response.read()
+    try:
+        with urllib.request.urlopen(req, timeout=8, context=ssl_context) as response:
+            response.read()
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(
+            f"Telegram sendMessage failed for chat_id={admin_chat_id}: {_describe_telegram_http_error(exc)}"
+        ) from exc
 
 
 def _admin_url() -> str:
