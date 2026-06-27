@@ -63,13 +63,14 @@ async def enqueue_notification_job(
     if commit:
         await db.commit()
         # TEMP_NOTIFICATION_JOB_LOG: remove after enqueue timing is verified.
-        logger.info(
-            "Notification job added to DB at %s id=%s type=%s recipient_user_id=%s status=%s",
-            now.isoformat(),
-            job.id,
-            job.job_type,
-            job.recipient_user_id,
-            job.status,
+        print(
+            "TEMP_NOTIFICATION_JOB_LOG",
+            f"added_at={now.isoformat()}",
+            f"id={job.id}",
+            f"type={job.job_type}",
+            f"recipient_user_id={job.recipient_user_id}",
+            f"status={job.status}",
+            flush=True,
         )
     return job
 

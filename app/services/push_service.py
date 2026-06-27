@@ -300,11 +300,13 @@ async def enqueue_match_resolved_notifications(
             )
         await db.commit()
         # TEMP_NOTIFICATION_JOB_LOG: remove after enqueue timing is verified.
-        logger.info(
-            "Committed match-resolved notification jobs at %s match_id=%s recipients=%s",
-            datetime.now(timezone.utc).isoformat(),
-            match.id,
-            len(bets),
+        print(
+            "TEMP_NOTIFICATION_JOB_LOG",
+            f"committed_at={datetime.now(timezone.utc).isoformat()}",
+            f"kind=match_resolved",
+            f"match_id={match.id}",
+            f"recipients={len(bets)}",
+            flush=True,
         )
     except Exception:
         logger.exception("Failed to enqueue match-resolved push notifications.")
@@ -371,11 +373,13 @@ async def enqueue_post_commented_notifications(
             )
         await db.commit()
         # TEMP_NOTIFICATION_JOB_LOG: remove after enqueue timing is verified.
-        logger.info(
-            "Committed post-comment notification jobs at %s post_id=%s recipients=%s",
-            datetime.now(timezone.utc).isoformat(),
-            post.id,
-            len(recipient_ids),
+        print(
+            "TEMP_NOTIFICATION_JOB_LOG",
+            f"committed_at={datetime.now(timezone.utc).isoformat()}",
+            f"kind=post_commented",
+            f"post_id={post.id}",
+            f"recipients={len(recipient_ids)}",
+            flush=True,
         )
     except Exception:
         logger.exception("Failed to enqueue post-commented push notifications.")
