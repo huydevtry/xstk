@@ -1,3 +1,4 @@
+import logging
 import json
 import socket
 from datetime import datetime, timedelta, timezone
@@ -9,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import NotificationJob, User
 from app.notifications import build_admin_new_user_pending_text
+
+logger = logging.getLogger(__name__)
 
 
 JOB_TYPE_WEB_PUSH = "web_push"
@@ -59,6 +62,15 @@ async def enqueue_notification_job(
     db.add(job)
     if commit:
         await db.commit()
+        # TEMP_NOTIFICATION_JOB_LOG: remove after enqueue timing is verified.
+        logger.info(
+            "Notification job added to DB at %s id=%s type=%s recipient_user_id=%s status=%s",
+            now.isoformat(),
+            job.id,
+            job.job_type,
+            job.recipient_user_id,
+            job.status,
+        )
     return job
 
 

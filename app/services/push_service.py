@@ -26,6 +26,7 @@ import json
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 from urllib.parse import urlparse
@@ -298,6 +299,13 @@ async def enqueue_match_resolved_notifications(
                 commit=False,
             )
         await db.commit()
+        # TEMP_NOTIFICATION_JOB_LOG: remove after enqueue timing is verified.
+        logger.info(
+            "Committed match-resolved notification jobs at %s match_id=%s recipients=%s",
+            datetime.now(timezone.utc).isoformat(),
+            match.id,
+            len(bets),
+        )
     except Exception:
         logger.exception("Failed to enqueue match-resolved push notifications.")
 
@@ -362,5 +370,12 @@ async def enqueue_post_commented_notifications(
                 commit=False,
             )
         await db.commit()
+        # TEMP_NOTIFICATION_JOB_LOG: remove after enqueue timing is verified.
+        logger.info(
+            "Committed post-comment notification jobs at %s post_id=%s recipients=%s",
+            datetime.now(timezone.utc).isoformat(),
+            post.id,
+            len(recipient_ids),
+        )
     except Exception:
         logger.exception("Failed to enqueue post-commented push notifications.")
