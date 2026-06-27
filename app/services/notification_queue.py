@@ -179,6 +179,16 @@ async def claim_pending_jobs(
         db.add(job)
 
     await db.commit()
+    if rows:
+        # TEMP_NOTIFICATION_JOB_LOG: remove after enqueue timing is verified.
+        print(
+            "TEMP_NOTIFICATION_JOB_LOG",
+            f"claimed_at={now.isoformat()}",
+            f"worker_id={worker_id}",
+            f"batch_size={len(rows)}",
+            "job_ids=" + ",".join(str(job.id) for job in rows),
+            flush=True,
+        )
     return list(rows)
 
 
@@ -191,6 +201,15 @@ async def mark_job_sent(db: AsyncSession, job: NotificationJob) -> None:
     job.locked_by = None
     db.add(job)
     await db.commit()
+    # TEMP_NOTIFICATION_JOB_LOG: remove after enqueue timing is verified.
+    print(
+        "TEMP_NOTIFICATION_JOB_LOG",
+        f"marked_sent_at={now.isoformat()}",
+        f"id={job.id}",
+        f"type={job.job_type}",
+        f"attempts={job.attempts}",
+        flush=True,
+    )
 
 
 async def mark_job_failed(db: AsyncSession, job: NotificationJob, exc: Exception) -> None:

@@ -62,6 +62,17 @@ async def _process_job(job: NotificationJob) -> None:
         current_job = await db.get(NotificationJob, job.id)
         if current_job is None:
             return
+        # TEMP_NOTIFICATION_JOB_LOG: remove after enqueue timing is verified.
+        print(
+            "TEMP_NOTIFICATION_JOB_LOG",
+            f"process_start_job_id={current_job.id}",
+            f"type={current_job.job_type}",
+            f"status={current_job.status}",
+            f"attempts={current_job.attempts}",
+            f"created_at={current_job.created_at}",
+            f"locked_at={current_job.locked_at}",
+            flush=True,
+        )
         try:
             if current_job.job_type == JOB_TYPE_WEB_PUSH:
                 await push_service.send_push_to_users(
