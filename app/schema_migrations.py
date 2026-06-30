@@ -83,6 +83,14 @@ async def ensure_sqlite_schema() -> None:
         # push_subscriptions table is created by Base.metadata.create_all above (PushSubscription model)
         # No manual migration needed — SQLAlchemy handles it via create_all.
 
+        result = await conn.execute(text("PRAGMA table_info(push_subscriptions)"))
+        existing_push_columns = {row[1] for row in result.fetchall()}
+        if "updated_at" not in existing_push_columns:
+            await conn.execute(text("ALTER TABLE push_subscriptions ADD COLUMN updated_at DATETIME"))
+            await conn.execute(text(
+                "UPDATE push_subscriptions SET updated_at = created_at WHERE updated_at IS NULL"
+            ))
+
         index_statements = [
             "CREATE INDEX IF NOT EXISTS ix_bets_user_created ON bets(user_id, created_at DESC)",
             "CREATE INDEX IF NOT EXISTS ix_bets_match_created ON bets(match_id, created_at DESC)",
@@ -95,6 +103,7 @@ async def ensure_sqlite_schema() -> None:
             "CREATE INDEX IF NOT EXISTS ix_users_approved_points ON users(is_approved, total_points DESC)",
             "CREATE INDEX IF NOT EXISTS ix_notifications_user_delivered_created ON notifications(user_id, delivered_at, created_at DESC)",
             "CREATE INDEX IF NOT EXISTS ix_notification_jobs_status_due_created ON notification_jobs(status, next_attempt_at, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_push_subscriptions_user_updated ON push_subscriptions(user_id, updated_at DESC, created_at DESC)",
         ]
         for statement in index_statements:
             await conn.execute(text(statement))

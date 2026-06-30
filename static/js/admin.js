@@ -4,6 +4,11 @@ const state = {
         points_enabled: true,
         homepage_announcement: "",
     },
+    broadcast: {
+        title: "",
+        body: "",
+        url: "/",
+    },
     users: [],
     matches: [],
     pointTransactionsByUser: {},
@@ -544,6 +549,9 @@ function renderOverviewFeatures() {
 function renderSettings() {
     const list = document.getElementById("settings-list");
     const announcement = String(state.settings.homepage_announcement || "");
+    const broadcastTitle = String(state.broadcast.title || "");
+    const broadcastBody = String(state.broadcast.body || "");
+    const broadcastUrl = String(state.broadcast.url || "/");
     list.innerHTML = `
         <div class="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4">
             <label for="homepage-announcement-input" class="block">
@@ -561,6 +569,40 @@ function renderSettings() {
                 <span id="homepage-announcement-count" class="text-slate-400">${announcement.length}/280</span>
             </div>
         </div>
+        <form id="broadcast-notification-form" class="rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4">
+            <div>
+                <div class="font-semibold text-white">Gui thong bao broadcast</div>
+                <div class="mt-1 text-sm text-slate-400">Gui noti den tat ca user da duyet. Push se chi ban toi 3 thiet bi moi nhat cua moi user.</div>
+            </div>
+            <div class="mt-4 grid gap-3 lg:grid-cols-2">
+                <input
+                    id="broadcast-title-input"
+                    class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-sky-500"
+                    maxlength="120"
+                    placeholder="Tieu de thong bao"
+                    value="${escapeHtml(broadcastTitle)}"
+                    required
+                >
+                <input
+                    id="broadcast-url-input"
+                    class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-2.5 text-sm text-white outline-none transition focus:border-sky-500"
+                    maxlength="500"
+                    placeholder="/"
+                    value="${escapeHtml(broadcastUrl)}"
+                >
+                <textarea
+                    id="broadcast-body-input"
+                    class="min-h-28 rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none transition focus:border-sky-500 lg:col-span-2"
+                    maxlength="500"
+                    placeholder="Noi dung thong bao"
+                    required
+                >${escapeHtml(broadcastBody)}</textarea>
+            </div>
+            <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <span id="broadcast-count" class="text-xs text-slate-400">${broadcastBody.length}/500</span>
+                <button id="send-broadcast-notification" type="submit" class="rounded-2xl bg-sky-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-sky-400">Gui broadcast</button>
+            </div>
+        </form>
     `;
     const announcementInput = document.getElementById("homepage-announcement-input");
     announcementInput?.addEventListener("input", event => {
@@ -570,6 +612,20 @@ function renderSettings() {
             count.textContent = `${event.target.value.length}/280`;
         }
     });
+    document.getElementById("broadcast-title-input")?.addEventListener("input", event => {
+        state.broadcast.title = event.target.value;
+    });
+    document.getElementById("broadcast-url-input")?.addEventListener("input", event => {
+        state.broadcast.url = event.target.value || "/";
+    });
+    document.getElementById("broadcast-body-input")?.addEventListener("input", event => {
+        state.broadcast.body = event.target.value;
+        const count = document.getElementById("broadcast-count");
+        if (count) {
+            count.textContent = `${event.target.value.length}/500`;
+        }
+    });
+    document.getElementById("broadcast-notification-form")?.addEventListener("submit", sendBroadcastNotification);
 }
 
 async function fetchSettings() {
@@ -610,6 +666,47 @@ async function saveSettings() {
             btn.textContent = oldText || "Lưu cài đặt";
         }
     }
+}
+
+async function sendBroadcastNotification(event) {
+    event.preventDefault();
+    const title = String(document.getElementById("broadcast-title-input")?.value || "").trim();
+    const body = String(document.getElementById("broadcast-body-input")?.value || "").trim();
+    const url = String(document.getElementById("broadcast-url-input")?.value || "/").trim() || "/";
+    if (!title || !body) {
+        showToast("Vui long nhap tieu de va noi dung thong bao.", "error");
+        return false;
+    }
+    if (!(url.startsWith("/") || url.startsWith("http://") || url.startsWith("https://"))) {
+        showToast("URL thong bao phai bat dau bang /, http:// hoac https://.", "error");
+        return false;
+    }
+    if (!window.confirm("Gui thong bao nay den tat ca user da duyet?")) return false;
+
+    const btn = document.getElementById("send-broadcast-notification");
+    const oldText = btn?.textContent;
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Dang gui...";
+    }
+    try {
+        const data = await fetchJson("/api/v1/admin/notifications/broadcast", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title, body, url }),
+        });
+        state.broadcast = { title: "", body: "", url: "/" };
+        renderSettings();
+        showToast(data.message || "Da dua thong bao broadcast vao hang doi.", "success");
+    } catch (err) {
+        showToast(err.message || "Khong the gui broadcast.", "error");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = oldText || "Gui broadcast";
+        }
+    }
+    return false;
 }
 
 async function fetchUsers(q = "") {
@@ -892,6 +989,7 @@ function renderMatches() {
 function renderMatchCard(match) {
     const status = normalizeMatchStatus(match.status);
     const canEdit = status !== "finished";
+    const canResetPool = status === "upcoming";
     const statusClass = status === "finished"
         ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
         : status === "live"
@@ -919,6 +1017,7 @@ function renderMatchCard(match) {
                 <div class="flex flex-wrap gap-2 lg:max-w-sm lg:justify-end">
                     ${canEdit ? `
                         <button type="button" class="rounded-2xl border border-sky-500/40 px-3 py-2 text-sm font-medium text-sky-200 transition hover:bg-sky-500/10" onclick="editMatch(${match.id})">Sửa</button>
+                        ${canResetPool ? `<button type="button" class="rounded-2xl border border-amber-500/40 px-3 py-2 text-sm font-medium text-amber-200 transition hover:bg-amber-500/10" onclick="resetMatchPool(${match.id})">Reset pool</button>` : ""}
                         <button type="button" class="rounded-2xl border border-rose-500/40 px-3 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/10" onclick="deleteMatch(${match.id})">Xóa</button>
                     ` : ""}
                     ${status === "finished" && !match.result_published ? resolveForm(match) : ""}
@@ -1056,6 +1155,17 @@ async function deleteMatch(matchId) {
         showToast("Đã xóa trận đấu.", "success");
     } catch (err) {
         showToast(err.message || "Không thể xóa trận đấu.", "error");
+    }
+}
+
+async function resetMatchPool(matchId) {
+    if (!window.confirm(`Reset pool tran #${matchId}? Tat ca nguoi choi se duoc hoan diem va can dat lai.`)) return;
+    try {
+        const data = await fetchJson(`/api/v1/admin/matches/${matchId}/reset-pool`, { method: "POST" });
+        await Promise.all([fetchMatches(), fetchOverview(), fetchUsers(state.userSearch)]);
+        showToast(data.message || "Da reset pool.", "success");
+    } catch (err) {
+        showToast(err.message || "Khong the reset pool.", "error");
     }
 }
 

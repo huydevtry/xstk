@@ -45,6 +45,7 @@ from app.services.notification_queue import enqueue_web_push
 logger = logging.getLogger(__name__)
 ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 WEB_PUSH_TIMEOUT_SECONDS = 10.0
+MAX_PUSH_DEVICES_PER_USER = 3
 
 
 def _env_enabled(name: str, default: bool = False) -> bool:
@@ -233,6 +234,29 @@ async def _delete_stale_subscriptions(db: AsyncSession, endpoints: list[str]) ->
     await db.commit()
 
 
+def _latest_subscriptions_per_user(
+    subscriptions: Sequence[PushSubscription],
+    *,
+    limit: int = MAX_PUSH_DEVICES_PER_USER,
+) -> list[PushSubscription]:
+    grouped: dict[UUID, list[PushSubscription]] = {}
+    for sub in subscriptions:
+        grouped.setdefault(sub.user_id, []).append(sub)
+
+    selected: list[PushSubscription] = []
+    for rows in grouped.values():
+        rows.sort(
+            key=lambda sub: (
+                sub.updated_at or sub.created_at or datetime.min,
+                sub.created_at or datetime.min,
+                sub.id or 0,
+            ),
+            reverse=True,
+        )
+        selected.extend(rows[:limit])
+    return selected
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -259,6 +283,7 @@ async def send_push_to_users(
             select(PushSubscription).where(PushSubscription.user_id.in_(user_ids))
         )
     ).scalars().all()
+    subscriptions = _latest_subscriptions_per_user(subscriptions)
 
     # Persist to inbox DB + in-memory pending store for each user
     for uid in user_ids:

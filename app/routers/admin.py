@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from app.services import push_service
 
 from app.schemas.payloads import (
+    AdminBroadcastNotificationPayload,
     AdminSettingsPayload,
     AdminUserPointsPayload,
     BetPayload,
@@ -229,6 +230,40 @@ async def update_admin_settings(
     await db.commit()
     return await _get_feature_settings(db)
 
+@router.post("/api/v1/admin/notifications/broadcast")
+async def broadcast_admin_notification(
+    payload: AdminBroadcastNotificationPayload,
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    title = payload.title.strip()
+    body = payload.body.strip()
+    url = (payload.url or "/").strip() or "/"
+    if not title or not body:
+        raise HTTPException(status_code=400, detail="Vui lòng nhập tiêu đề và nội dung thông báo.")
+    if not (url.startswith("/") or url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(status_code=400, detail="URL thông báo phải bắt đầu bằng /, http:// hoặc https://.")
+
+    users = (
+        await db.execute(select(User).where(User.is_approved.is_(True)).order_by(User.created_at.asc()))
+    ).scalars().all()
+
+    for user in users:
+        await push_service.enqueue_web_push(
+            db,
+            user_id=user.id,
+            title=title,
+            body=body,
+            url=url,
+            commit=False,
+        )
+    await db.commit()
+
+    return {
+        "message": f"Đã đưa thông báo vào hàng đợi cho {len(users)} người dùng.",
+        "recipient_count": len(users),
+    }
+
 @router.get("/api/v1/admin/users")
 async def get_admin_users(
     q: str = "",
@@ -444,6 +479,85 @@ async def delete_match(
         raise HTTPException(status_code=500, detail=str(e))
 
     return {"message": "Đã xóa trận đấu."}
+
+@router.post("/api/v1/admin/matches/{match_id}/reset-pool")
+async def reset_match_pool(
+    match_id: int,
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _sync_match_statuses(db)
+    match = (await db.execute(select(Match).where(Match.id == match_id))).scalars().first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Trận đấu không tồn tại.")
+    if match.status != MatchStatus.upcoming or match.resolved_at is not None:
+        raise HTTPException(status_code=400, detail="Chỉ có thể reset pool của trận chưa bắt đầu.")
+
+    bets = (
+        await db.execute(
+            select(Bet).where(Bet.match_id == match_id).order_by(Bet.created_at.asc(), Bet.id.asc())
+        )
+    ).scalars().all()
+    user_ids = list({bet.user_id for bet in bets})
+    users_by_id = {
+        item.id: item
+        for item in (
+            await db.execute(select(User).where(User.id.in_(user_ids)))
+        ).scalars().all()
+    } if user_ids else {}
+
+    recipients: list[tuple[User, int]] = []
+    total_refunded = 0
+
+    try:
+        for bet in bets:
+            user_q = users_by_id.get(bet.user_id)
+            if user_q:
+                refund_points = int(bet.stake or 0)
+                user_q.total_points = int(user_q.total_points or 0) + refund_points
+                total_refunded += refund_points
+                recipients.append((user_q, refund_points))
+                db.add(user_q)
+                await _record_point_transaction(
+                    db,
+                    user=user_q,
+                    delta_points=refund_points,
+                    transaction_type=PointTransactionType.bet_refund,
+                    description=f"Hoàn điểm do admin reset pool: {match.home_team} vs {match.away_team}",
+                    actor=admin_user,
+                    match=match,
+                )
+            await db.delete(bet)
+
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    queued_notifications = 0
+    try:
+        for user_q, refund_points in recipients:
+            await push_service.enqueue_web_push(
+                db,
+                user_id=user_q.id,
+                title=f"Pool đã được reset: {match.home_team} vs {match.away_team}",
+                body=f"Bạn đã được hoàn {refund_points:,} điểm. Hãy đặt lại trước khi trận bắt đầu.",
+                url=f"/?match={match.id}",
+                commit=False,
+            )
+            queued_notifications += 1
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        logger.exception("Failed to enqueue reset-pool notifications for match %s", match_id)
+
+    return {
+        "message": f"Đã reset pool và hoàn {total_refunded:,} điểm cho {len(recipients)} người chơi.",
+        "match_id": match_id,
+        "reset_bet_count": len(bets),
+        "refunded_points": total_refunded,
+        "queued_notifications": queued_notifications,
+    }
 
 @router.post("/api/v1/admin/resolve-match/{match_id}")
 async def resolve_match(

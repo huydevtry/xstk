@@ -93,14 +93,18 @@ async def subscribe_push(
         existing.p256dh = payload.p256dh
         existing.auth = payload.auth
         existing.user_agent = payload.user_agent or request.headers.get("user-agent")
+        existing.updated_at = _utc_now_naive()
         db.add(existing)
     else:
+        now = _utc_now_naive()
         sub = PushSubscription(
             user_id=user.id,
             endpoint=payload.endpoint,
             p256dh=payload.p256dh,
             auth=payload.auth,
             user_agent=payload.user_agent or request.headers.get("user-agent"),
+            created_at=now,
+            updated_at=now,
         )
         db.add(sub)
 

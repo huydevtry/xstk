@@ -42,6 +42,11 @@ class AdminUserPointsPayload(BaseModel):
     total_points: int = Field(..., ge=0, le=1_000_000_000)
     reason: str = Field(..., min_length=1, max_length=280)
 
+class AdminBroadcastNotificationPayload(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+    body: str = Field(..., min_length=1, max_length=500)
+    url: str = Field(default="/", max_length=500)
+
 class UpdateProfilePayload(BaseModel):
     display_name: Optional[str] = None
     profile_status: Optional[str] = None

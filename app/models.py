@@ -168,6 +168,7 @@ class PushSubscription(Base):
     auth = Column(String, nullable=False)
     user_agent = Column(String, nullable=True)
     created_at = Column(DateTime, default=_utc_now_naive)
+    updated_at = Column(DateTime, default=_utc_now_naive, onupdate=_utc_now_naive)
 
 
 class Notification(Base):
