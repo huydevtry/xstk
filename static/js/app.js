@@ -139,6 +139,14 @@ function formatVNDateTime(value) {
     });
 }
 
+function formatMatchDisplayScore(match, settlement = {}) {
+    if (settlement.display_score) return settlement.display_score;
+    if (match.display_score) return match.display_score;
+    const score = `${Number(match.home_score ?? 0)}-${Number(match.away_score ?? 0)}`;
+    const penaltyScore = settlement.penalty_score || match.penalty_score;
+    return penaltyScore ? `${score} (pen ${penaltyScore})` : score;
+}
+
 function getQuoteByDetail(detail) {
     const pool = detail?.pool || {};
     const stakeMap = [
@@ -451,7 +459,7 @@ function renderLatestFinishedMatch(detail) {
         : settlement.refunded ? "Hoàn điểm"
         : choiceLabel(settlement.winning_choice);
     const scoreText = isPublished
-        ? (settlement.score || `${match.home_score ?? 0}-${match.away_score ?? 0}`)
+        ? formatMatchDisplayScore(match, settlement)
         : "?-?";
 
     const cardId = `finished-card-${match.id}`;

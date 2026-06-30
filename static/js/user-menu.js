@@ -1,25 +1,52 @@
 let deferredPrompt = null;
 
+function isStandalonePwa() {
+    return window.matchMedia?.("(display-mode: standalone)")?.matches
+        || window.navigator.standalone === true;
+}
+
+function isIosDevice() {
+    return /iphone|ipad|ipod/i.test(window.navigator.userAgent || "")
+        || (window.navigator.platform === "MacIntel" && window.navigator.maxTouchPoints > 1);
+}
+
+function showInstallButton() {
+    if (isStandalonePwa()) return;
+    const installBtn = document.getElementById("pwa-install-btn");
+    if (installBtn) {
+        installBtn.classList.remove("hidden");
+    }
+}
+
+function hideInstallButton() {
+    const installBtn = document.getElementById("pwa-install-btn");
+    if (installBtn) {
+        installBtn.classList.add("hidden");
+    }
+}
+
+function showManualInstallGuide() {
+    alert(
+        "Để cài ứng dụng lên màn hình chính:\n\n" +
+        "1. Nhấn nút Share/Chia sẻ trên trình duyệt.\n" +
+        "2. Chọn Add to Home Screen / Thêm vào Màn hình chính.\n" +
+        "3. Nhấn Add / Thêm để hoàn tất."
+    );
+}
+
 // Listen for the beforeinstallprompt event (fired by browsers supporting custom install prompts)
 window.addEventListener("beforeinstallprompt", (e) => {
     // Prevent the mini-infobar from appearing on mobile
     e.preventDefault();
     // Stash the event so it can be triggered later
     deferredPrompt = e;
-    // Show the install button if the DOM is already loaded
-    const installBtn = document.getElementById("pwa-install-btn");
-    if (installBtn) {
-        installBtn.classList.remove("hidden");
-    }
+    showInstallButton();
 });
 
 // Hide the install button once the app has been successfully installed
 window.addEventListener("appinstalled", () => {
     deferredPrompt = null;
-    const installBtn = document.getElementById("pwa-install-btn");
-    if (installBtn) {
-        installBtn.classList.add("hidden");
-    }
+    hideInstallButton();
 });
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -61,15 +88,18 @@ document.addEventListener("DOMContentLoaded", () => {
     // Wire up PWA install button
     const installBtn = document.getElementById("pwa-install-btn");
     if (installBtn) {
-        // If the event has already fired, show the button
-        if (deferredPrompt) {
-            installBtn.classList.remove("hidden");
+        // Chrome/Android exposes beforeinstallprompt; iOS Safari needs manual Add to Home Screen steps.
+        if (deferredPrompt || isIosDevice()) {
+            showInstallButton();
         }
 
         installBtn.addEventListener("click", async () => {
-            if (!deferredPrompt) return;
             // Close the menu first for a clean UX
             closeAllMenus();
+            if (!deferredPrompt) {
+                showManualInstallGuide();
+                return;
+            }
             // Show the install prompt
             deferredPrompt.prompt();
             // Wait for the user to respond to the prompt
@@ -78,7 +108,7 @@ document.addEventListener("DOMContentLoaded", () => {
             // Clear the prompt (it can only be used once)
             deferredPrompt = null;
             // Hide the button
-            installBtn.classList.add("hidden");
+            hideInstallButton();
         });
     }
 

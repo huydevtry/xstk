@@ -47,6 +47,22 @@
         return { HOME: "Chủ nhà", DRAW: "Hòa", AWAY: "Khách" }[choice] || choice || "Không rõ";
     }
 
+    function displayScore(match, settlement) {
+        if (settlement?.display_score) return settlement.display_score;
+        if (match?.display_score) return match.display_score;
+        const score = `${match?.home_score ?? 0}-${match?.away_score ?? 0}`;
+        const penaltyScore = settlement?.penalty_score || match?.penalty_score;
+        return penaltyScore ? `${score} (pen ${penaltyScore})` : score;
+    }
+
+    function advancementText(match, settlement) {
+        const advancement = settlement?.advancing_team || match?.advancing_team;
+        if (!advancement?.team) return null;
+        return advancement.decided_by === "penalties"
+            ? `${advancement.team} (pen)`
+            : advancement.team;
+    }
+
     function renderBettorAvatar(bettor, className = "w-7 h-7") {
         const avatarSrc = safeImageSrc(bettor.avatar_url);
         if (avatarSrc) {
@@ -182,6 +198,9 @@
         const totalPool = Number(pool.total_pool || 0);
         const resultPublished = Boolean(settlement.result_published);
         const isOddHandicap = (match.handicap ?? 0) % 1 !== 0;
+        const scoreText = displayScore(match, settlement);
+        const penaltyScore = settlement.penalty_score || match.penalty_score;
+        const advancingTeamText = advancementText(match, settlement);
         const choiceStats = [
             { key: "HOME", stake: Number(pool.home_stakes || 0), count: Number(pool.home_count || 0), bettors: bettors.HOME || [] },
             { key: "DRAW", stake: Number(pool.draw_stakes || 0), count: Number(pool.draw_count || 0), bettors: bettors.DRAW || [] },
@@ -190,7 +209,7 @@
 
         titleEl.textContent = `${match.home_team} vs ${match.away_team}`;
         subtitleEl.textContent = resultPublished
-            ? `Kèo chấp ${match.handicap ?? 0} | Tỷ số ${settlement.score || `${match.home_score ?? 0}-${match.away_score ?? 0}`} | Sau kèo ${settlement.adjusted_score || "--"}`
+            ? `Kèo chấp ${match.handicap ?? 0} | Tỷ số ${scoreText} | Sau kèo ${settlement.adjusted_score || "--"}`
             : settlement.is_finished
             ? `Kèo chấp ${match.handicap ?? 0} | Kết thúc ${formatVNDateTime(match.end_time)} | Chờ kết quả`
             : `Kèo chấp ${match.handicap ?? 0} | Bắt đầu ${formatVNDateTime(match.start_time)} | Kết thúc ${formatVNDateTime(match.end_time)} | Trạng thái ${match.status}`;
@@ -211,11 +230,13 @@
             </div>
 
             ${resultPublished ? `
-                <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    ${summaryTile("Kết quả", settlement.score || `${match.home_score ?? 0}-${match.away_score ?? 0}`, "text-[#D3af37]")}
+                <div class="grid grid-cols-2 gap-3 md:grid-cols-5">
+                    ${summaryTile("Kết quả", scoreText, "text-[#D3af37]")}
+                    ${penaltyScore ? summaryTile("Penalty", penaltyScore, "text-violet-700") : ""}
                     ${summaryTile("Sau kèo", settlement.adjusted_score || "--", "text-[#D3af37]")}
                     ${summaryTile("Người thắng", String(Number(settlement.winner_count || 0)), "text-[#D3af37]")}
                     ${summaryTile(settlement.refunded ? "Hoàn điểm" : "Cửa thắng", settlement.refunded ? String(Number(settlement.refund_count || 0)) : choiceLabel(settlement.winning_choice), "text-[#D3af37]")}
+                    ${advancingTeamText ? summaryTile("Đi tiếp", advancingTeamText, "text-emerald-700") : ""}
                 </div>
             ` : settlement.is_finished ? `
                 <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">

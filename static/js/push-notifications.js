@@ -35,7 +35,7 @@
 
   function timeAgo(isoStr) {
     if (!isoStr) return '';
-    const diff = Date.now() - new Date(isoStr).getTime(); // Note: DB returns UTC ISO string, handled natively by browser Date
+    const diff = Date.now() - new Date(isoStr).getTime();
     const m = Math.floor(diff / 60000);
     if (m < 1)  return 'Vừa xong';
     if (m < 60) return `${m} phút trước`;

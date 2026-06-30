@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Lịch trận đấu</title>
+    {% include "partials/pwa_head.html" %}
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/style.css?v={{ asset_version }}">
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans antialiased pb-24">
+    {% set header_root_class = "sticky top-0 z-50 border-b border-slate-200/80 bg-white/88 backdrop-blur shadow-sm" %}
+    {% set header_row_class = "px-3 py-3 sm:px-4 sm:py-3 flex flex-wrap items-start justify-between gap-2 sm:items-center" %}
+    {% set header_title = "Lịch Trận Đấu" %}
+    {% set header_title_href = "/match" %}
+    {% set header_title_link_class = "min-w-0 flex-1 sm:flex-none" %}
+    {% set header_title_class = "truncate text-lg font-black tracking-[0.14em] text-sky-600 sm:text-xl" %}
+    {% set show_user_menu = true %}
+    {% set header_actions_class = "flex max-w-full flex-wrap items-center justify-end gap-2" %}
+    {% set user_info_button_class = "max-w-full text-xs bg-white/95 px-3 py-1.5 rounded-full border border-slate-200 text-slate-700 hover:border-sky-300 hover:text-sky-800 transition-colors shadow-sm" %}
+    {% set user_menu_panel_class = "user-menu-panel hidden absolute right-0 top-full z-50 mt-2 w-52 rounded-[1.4rem] p-2.5 shadow-xl" %}
+    {% include "partials/user_header.html" %}
+
+    <main class="mx-auto mt-4 max-w-6xl px-3 sm:mt-6 sm:px-4">
+        <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div class="min-w-0">
+                    <p class="text-xs font-bold uppercase tracking-[0.2em] text-sky-600">Match center</p>
+                    <h1 class="mt-1 text-2xl font-black text-slate-950 sm:text-3xl">Lịch thi đấu & kết quả</h1>
+                    <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Theo dõi trận đã xong, trận sắp diễn ra, tỉ số chính thức, loạt penalty và đội đi tiếp.</p>
+                </div>
+                <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                    <input id="match-search" type="search" placeholder="Tìm đội bóng..." class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-300 focus:bg-white sm:w-64">
+                    <button id="refresh-match-schedule" type="button" class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 transition hover:bg-sky-100">Làm mới</button>
+                </div>
+            </div>
+
+            <div class="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div class="text-[11px] font-bold uppercase tracking-wide text-slate-500">Tất cả</div>
+                    <div id="match-count-all" class="mt-1 text-2xl font-black text-slate-950">0</div>
+                </div>
+                <div class="rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3">
+                    <div class="text-[11px] font-bold uppercase tracking-wide text-sky-700">Sắp diễn ra</div>
+                    <div id="match-count-upcoming" class="mt-1 text-2xl font-black text-sky-700">0</div>
+                </div>
+                <div class="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3">
+                    <div class="text-[11px] font-bold uppercase tracking-wide text-rose-700">Đang đá</div>
+                    <div id="match-count-live" class="mt-1 text-2xl font-black text-rose-700">0</div>
+                </div>
+                <div class="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                    <div class="text-[11px] font-bold uppercase tracking-wide text-emerald-700">Đã xong</div>
+                    <div id="match-count-finished" class="mt-1 text-2xl font-black text-emerald-700">0</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+                <button type="button" class="match-filter-btn rounded-xl px-3 py-2 text-sm font-semibold" data-match-filter="all">Tất cả</button>
+                <button type="button" class="match-filter-btn rounded-xl px-3 py-2 text-sm font-semibold" data-match-filter="upcoming">Sắp diễn ra</button>
+                <button type="button" class="match-filter-btn rounded-xl px-3 py-2 text-sm font-semibold" data-match-filter="live">Đang đá</button>
+                <button type="button" class="match-filter-btn rounded-xl px-3 py-2 text-sm font-semibold" data-match-filter="finished">Đã xong</button>
+            </div>
+            <div id="match-page-updated" class="text-xs font-medium text-slate-400"></div>
+        </section>
+
+        <section id="match-page-error" class="hidden mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"></section>
+        <section id="match-page-empty" class="hidden mt-4 rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
+            Chưa có trận phù hợp với bộ lọc hiện tại.
+        </section>
+        <section id="match-timeline" class="mt-4 space-y-4">
+            <div class="animate-pulse rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="h-4 w-36 rounded bg-slate-100"></div>
+                <div class="mt-4 h-24 rounded bg-slate-100"></div>
+            </div>
+            <div class="animate-pulse rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="h-4 w-40 rounded bg-slate-100"></div>
+                <div class="mt-4 h-24 rounded bg-slate-100"></div>
+            </div>
+        </section>
+    </main>
+
+    {% set footer_root_class = "fixed bottom-0 left-0 right-0 bg-white/92 backdrop-blur border-t border-slate-200 flex justify-around py-2 z-50 shadow-[0_-8px_24px_rgba(15,23,42,0.05)]" %}
+    {% include "partials/user_footer_nav.html" %}
+
+    <div id="match-detail-modal" class="hidden fixed inset-0 z-[60] bg-slate-950/50 backdrop-blur-sm overflow-y-auto">
+        <div class="min-h-full px-4 py-4 flex items-start justify-center">
+            <div class="w-full max-w-5xl rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
+                <div class="flex items-start justify-between gap-3 px-4 py-4 border-b border-slate-200">
+                    <div class="min-w-0">
+                        <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500">Chi tiết trận đấu</div>
+                        <div id="match-detail-title" class="mt-1 text-lg md:text-xl font-black text-slate-900 truncate"></div>
+                        <div id="match-detail-subtitle" class="mt-1 text-xs md:text-sm text-slate-500"></div>
+                    </div>
+                    <button type="button" onclick="closeMatchDetail()" class="text-slate-400 hover:text-slate-900 p-2 rounded-full hover:bg-slate-100 transition-colors" title="Đóng">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="px-4 py-4 space-y-4">
+                    <div id="match-detail-quote" class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 italic"></div>
+                    <div id="match-detail-body" class="space-y-4"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/match-detail.js?v={{ asset_version }}"></script>
+    <script src="/static/js/user-shell.js?v={{ asset_version }}"></script>
+    <script src="/static/js/user-menu.js?v={{ asset_version }}"></script>
+    <script src="/static/js/match.js?v={{ asset_version }}"></script>
+    {% include "partials/pwa_scripts.html" %}
+</body>
+</html>

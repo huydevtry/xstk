@@ -215,7 +215,7 @@ function getPastedFeedMediaFile(event) {
 }
 
 function getSelectedMatchSummary(bet) {
-    return `${bet.home_team} ${Number(bet.home_score ?? 0)} - ${Number(bet.away_score ?? 0)} ${bet.away_team}`;
+    return `${bet.home_team} ${bet.display_score || `${Number(bet.home_score ?? 0)} - ${Number(bet.away_score ?? 0)}`} ${bet.away_team}`;
 }
 
 function syncSelectedMatchContext() {

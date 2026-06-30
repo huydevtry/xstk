@@ -5,11 +5,19 @@ import unittest
 from app.services.shared import (
     _compute_two_way_settlement,
     _derive_bet_outcome,
+    _match_response,
     _serialize_bet_history_entry,
 )
 
 
-def build_match(*, handicap: float, home_score: int, away_score: int):
+def build_match(
+    *,
+    handicap: float,
+    home_score: int,
+    away_score: int,
+    home_penalty_score=None,
+    away_penalty_score=None,
+):
     return SimpleNamespace(
         id=1,
         home_team="Home",
@@ -18,9 +26,12 @@ def build_match(*, handicap: float, home_score: int, away_score: int):
         away_icon=None,
         home_score=home_score,
         away_score=away_score,
+        home_penalty_score=home_penalty_score,
+        away_penalty_score=away_penalty_score,
         handicap=handicap,
         status="finished",
         start_time=datetime(2026, 1, 1, 12, 0, 0),
+        end_time=datetime(2026, 1, 1, 14, 0, 0),
         resolved_at=datetime(2026, 1, 1, 15, 0, 0),
     )
 
@@ -145,6 +156,22 @@ class HandicapSettlementTests(unittest.TestCase):
         self.assertEqual(payload["outcome"], "HALF_LOSE")
         self.assertEqual(payload["outcome_label"], "Thua nửa")
         self.assertEqual(payload["reward_label"], "Nhận 50d")
+
+    def test_match_serializer_exposes_penalty_score_and_advancing_team(self):
+        match = build_match(
+            handicap=0,
+            home_score=1,
+            away_score=1,
+            home_penalty_score=4,
+            away_penalty_score=3,
+        )
+
+        payload = _match_response(match)
+
+        self.assertEqual(payload["penalty_score"], "4-3")
+        self.assertEqual(payload["display_score"], "1-1 (pen 4-3)")
+        self.assertEqual(payload["advancing_team"]["side"], "HOME")
+        self.assertEqual(payload["advancing_team"]["decided_by"], "penalties")
 
 
 if __name__ == "__main__":

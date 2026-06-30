@@ -72,6 +72,13 @@ async def ensure_sqlite_schema() -> None:
         if "previous_seen_at" not in existing_user_columns:
             await conn.execute(text("ALTER TABLE users ADD COLUMN previous_seen_at DATETIME"))
 
+        result = await conn.execute(text("PRAGMA table_info(matches)"))
+        existing_match_columns = {row[1] for row in result.fetchall()}
+        if "home_penalty_score" not in existing_match_columns:
+            await conn.execute(text("ALTER TABLE matches ADD COLUMN home_penalty_score INTEGER"))
+        if "away_penalty_score" not in existing_match_columns:
+            await conn.execute(text("ALTER TABLE matches ADD COLUMN away_penalty_score INTEGER"))
+
         result = await conn.execute(text("PRAGMA table_info(notifications)"))
         existing_notification_columns = {row[1] for row in result.fetchall()}
         if "delivered_at" not in existing_notification_columns:

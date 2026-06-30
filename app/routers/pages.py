@@ -215,3 +215,10 @@ async def read_community(request: Request, user: User = Depends(get_current_user
         headers=NO_CACHE_HEADERS,
     )
 
+@router.get("/match", response_class=HTMLResponse)
+async def read_match(request: Request, user: User = Depends(get_current_user)):
+    return templates.TemplateResponse(
+        "match.html",
+        _page_context(request, current_page="match", viewer=user),
+        headers=NO_CACHE_HEADERS,
+    )

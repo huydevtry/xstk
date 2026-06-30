@@ -197,6 +197,10 @@ async def get_upcoming_matches(db: AsyncSession = Depends(get_db)):
             "home_icon": r.Match.home_icon,
             "away_team": r.Match.away_team,
             "away_icon": r.Match.away_icon,
+            "home_score": r.Match.home_score,
+            "away_score": r.Match.away_score,
+            "home_penalty_score": getattr(r.Match, "home_penalty_score", None),
+            "away_penalty_score": getattr(r.Match, "away_penalty_score", None),
             "handicap": r.Match.handicap,
             "status": r.Match.status,
             "start_time": _serialize_app_datetime(r.Match.start_time),
@@ -210,6 +214,27 @@ async def get_upcoming_matches(db: AsyncSession = Depends(get_db)):
         }
         for r in rows
     ]
+
+@router.get("/api/v1/matches/schedule")
+async def get_match_schedule(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _sync_match_statuses(db)
+    rows = (
+        await db.execute(
+            select(Match).order_by(
+                case(
+                    (Match.status == MatchStatus.live, 0),
+                    (Match.status == MatchStatus.upcoming, 1),
+                    else_=2,
+                ),
+                Match.start_time.asc(),
+                Match.id.asc(),
+            )
+        )
+    ).scalars().all()
+    return [_match_response(match) for match in rows]
 
 @router.get("/api/v1/matches/{match_id}/bets-legacy")
 async def get_match_bets(match_id: int, db: AsyncSession = Depends(get_db)):

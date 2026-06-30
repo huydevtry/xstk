@@ -379,7 +379,7 @@ function getPastedFeedMediaFile(event) {
 }
 
 function getSelectedMatchSummary(bet) {
-    return `${bet.home_team} ${Number(bet.home_score ?? 0)} - ${Number(bet.away_score ?? 0)} ${bet.away_team}`;
+    return `${bet.home_team} ${bet.display_score || `${Number(bet.home_score ?? 0)} - ${Number(bet.away_score ?? 0)}`} ${bet.away_team}`;
 }
 
 function syncSelectedMatchContext() {
@@ -487,7 +487,7 @@ function renderHistoryList() {
                             <div class="flex min-w-0 flex-wrap items-center gap-2">
                                 ${homeIcon}
                                 <div class="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">${escapeHtml(bet.home_team)}</div>
-                                <div class="flex-shrink-0 text-xs font-black text-slate-400">${escapeHtml(bet.result_published ? `${Number(bet.home_score ?? 0)} - ${Number(bet.away_score ?? 0)}` : "vs")}</div>
+                                <div class="flex-shrink-0 text-xs font-black text-slate-400">${escapeHtml(bet.result_published ? (bet.display_score || `${Number(bet.home_score ?? 0)} - ${Number(bet.away_score ?? 0)}`) : "vs")}</div>
                                 <div class="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">${escapeHtml(bet.away_team)}</div>
                                 ${awayIcon}
                             </div>

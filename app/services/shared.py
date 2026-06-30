@@ -53,6 +53,7 @@ ASSET_VERSION = str(
         int(Path("static/js/admin.js").stat().st_mtime),
         int(Path("static/js/community.js").stat().st_mtime),
         int(Path("static/js/giphy-picker.js").stat().st_mtime),
+        int(Path("static/js/match.js").stat().st_mtime),
         int(Path("static/js/match-detail.js").stat().st_mtime),
         int(Path("static/js/profile.js").stat().st_mtime),
         int(Path("static/js/timeline.js").stat().st_mtime),
@@ -383,6 +384,8 @@ def _compute_two_way_settlement(match: Match, bets: list[Bet]) -> dict:
 def _serialize_profile_status_match(match: Optional[Match]) -> Optional[dict]:
     if match is None:
         return None
+    home_penalty_score = getattr(match, "home_penalty_score", None)
+    away_penalty_score = getattr(match, "away_penalty_score", None)
     return {
         "id": match.id,
         "home_team": match.home_team,
@@ -391,8 +394,13 @@ def _serialize_profile_status_match(match: Optional[Match]) -> Optional[dict]:
         "away_icon": match.away_icon,
         "home_score": match.home_score,
         "away_score": match.away_score,
+        "home_penalty_score": home_penalty_score,
+        "away_penalty_score": away_penalty_score,
+        "penalty_score": _match_penalty_score(match),
+        "display_score": _match_display_score(match),
         "status": match.status,
         "result_published": bool(getattr(match, "resolved_at", None)),
+        "advancing_team": _match_advancement_payload(match),
     }
 
 def _serialize_match_reaction_result(
@@ -1210,7 +1218,55 @@ def _normalize_external_media_payload(media_url: Optional[str], media_provider: 
 def _match_result_published(match: Match) -> bool:
     return match.status == MatchStatus.finished and bool(getattr(match, "resolved_at", None))
 
+def _match_penalty_score(match: Match) -> Optional[str]:
+    home_penalty_score = getattr(match, "home_penalty_score", None)
+    away_penalty_score = getattr(match, "away_penalty_score", None)
+    if home_penalty_score is None or away_penalty_score is None:
+        return None
+    return f"{home_penalty_score}-{away_penalty_score}"
+
+def _match_display_score(match: Match) -> Optional[str]:
+    if not _match_result_published(match):
+        return None
+    score = f"{match.home_score}-{match.away_score}"
+    penalty_score = _match_penalty_score(match)
+    return f"{score} (pen {penalty_score})" if penalty_score else score
+
+def _match_advancement_payload(match: Match) -> Optional[dict]:
+    if not _match_result_published(match):
+        return None
+
+    home_penalty_score = getattr(match, "home_penalty_score", None)
+    away_penalty_score = getattr(match, "away_penalty_score", None)
+    decided_by = "score"
+    winner_side = None
+
+    if home_penalty_score is not None and away_penalty_score is not None:
+        decided_by = "penalties"
+        if home_penalty_score > away_penalty_score:
+            winner_side = "HOME"
+        elif home_penalty_score < away_penalty_score:
+            winner_side = "AWAY"
+    elif match.home_score > match.away_score:
+        winner_side = "HOME"
+    elif match.home_score < match.away_score:
+        winner_side = "AWAY"
+
+    if winner_side is None:
+        return None
+
+    is_home = winner_side == "HOME"
+    return {
+        "side": winner_side,
+        "team": match.home_team if is_home else match.away_team,
+        "icon": match.home_icon if is_home else match.away_icon,
+        "decided_by": decided_by,
+        "label": "Đi tiếp sau penalty" if decided_by == "penalties" else "Đi tiếp",
+    }
+
 def _match_response(match: Match):
+    home_penalty_score = getattr(match, "home_penalty_score", None)
+    away_penalty_score = getattr(match, "away_penalty_score", None)
     return {
         "id": match.id,
         "home_team": match.home_team,
@@ -1219,12 +1275,17 @@ def _match_response(match: Match):
         "away_icon": match.away_icon,
         "home_score": match.home_score,
         "away_score": match.away_score,
+        "home_penalty_score": home_penalty_score,
+        "away_penalty_score": away_penalty_score,
+        "penalty_score": _match_penalty_score(match),
+        "display_score": _match_display_score(match),
         "handicap": match.handicap,
         "status": match.status,
         "start_time": _serialize_app_datetime(match.start_time),
         "end_time": _serialize_app_datetime(_match_effective_end_time(match)) if match.start_time else None,
         "result_published": _match_result_published(match),
         "resolved_at": _serialize_app_datetime(match.resolved_at) if getattr(match, "resolved_at", None) else None,
+        "advancing_team": _match_advancement_payload(match),
     }
 
 def _choice_label(choice: Optional[str]) -> str:
@@ -1410,6 +1471,10 @@ def _serialize_bet_history_entry(
         "match_status": match.status,
         "home_score": match.home_score,
         "away_score": match.away_score,
+        "home_penalty_score": getattr(match, "home_penalty_score", None),
+        "away_penalty_score": getattr(match, "away_penalty_score", None),
+        "penalty_score": _match_penalty_score(match),
+        "display_score": _match_display_score(match),
         "handicap": match.handicap,
         "start_time": _serialize_app_datetime(match.start_time),
         "choice": bet.choice,
@@ -1854,6 +1919,9 @@ async def _build_match_detail_payload(
         "adjusted_away_score": adjusted_away if result_published else None,
         "adjusted_score": f"{adjusted_home}-{adjusted_away}" if result_published else None,
         "score": f"{match.home_score}-{match.away_score}" if result_published else None,
+        "penalty_score": _match_penalty_score(match) if result_published else None,
+        "display_score": _match_display_score(match) if result_published else None,
+        "advancing_team": _match_advancement_payload(match),
         "refunded": refunded,
         "winner_count": 0,
         "loser_count": 0,

@@ -62,7 +62,7 @@
             ? `<img src="${safeImageSrc(match.away_icon)}" alt="" class="h-4 w-6 rounded-none border border-slate-200 bg-white object-contain">`
             : `<span class="inline-flex h-4 w-6 items-center justify-center rounded-none border border-slate-200 bg-slate-100 text-[9px] font-black text-slate-500">${escapeHtml(String(match.away_team || "?").slice(0, 1).toUpperCase())}</span>`;
         const score = match.result_published || String(match.status || "").toLowerCase() === "finished"
-            ? `${Number(match.home_score ?? 0)} - ${Number(match.away_score ?? 0)}`
+            ? (match.display_score || `${Number(match.home_score ?? 0)} - ${Number(match.away_score ?? 0)}`)
             : "vs";
         return `
             <button

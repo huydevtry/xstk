@@ -577,11 +577,19 @@ async def resolve_match(
         raise HTTPException(status_code=400, detail="Trận chưa kết thúc, chưa thể giải.")
     if match.resolved_at is not None:
         raise HTTPException(status_code=400, detail="Trận đã được giải trước đó.")
+    penalty_scores = (payload.home_penalty_score, payload.away_penalty_score)
+    if any(score is not None for score in penalty_scores):
+        if any(score is None for score in penalty_scores):
+            raise HTTPException(status_code=400, detail="Vui lòng nhập đủ tỷ số penalty cho cả hai đội.")
+        if payload.home_penalty_score == payload.away_penalty_score:
+            raise HTTPException(status_code=400, detail="Tỷ số penalty phải phân thắng bại.")
 
     try:
         # Lưu score
         match.home_score = payload.home_score
         match.away_score = payload.away_score
+        match.home_penalty_score = payload.home_penalty_score
+        match.away_penalty_score = payload.away_penalty_score
 
         # Tính adjusted score với handicap
         adjusted_home = payload.home_score + match.handicap
@@ -706,6 +714,9 @@ async def resolve_match(
     return {
         "message": f"Đã giải trận. Kết quả kèo: {winning_choice}.",
         "adjusted_score": f"{adjusted_home} - {adjusted_away}",
+        "penalty_score": f"{payload.home_penalty_score} - {payload.away_penalty_score}"
+        if payload.home_penalty_score is not None and payload.away_penalty_score is not None
+        else None,
         "winning_choice": winning_choice,
         "total_pool": total_pool,
         "refunded": refunded,

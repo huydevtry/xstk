@@ -317,6 +317,8 @@ async def enqueue_match_resolved_notifications(
     try:
         match_label = f"{match.home_team} vs {match.away_team}"
         score_label = f"{match.home_score} - {match.away_score}"
+        if getattr(match, "home_penalty_score", None) is not None and getattr(match, "away_penalty_score", None) is not None:
+            score_label = f"{score_label} (pen {match.home_penalty_score} - {match.away_penalty_score})"
 
         for bet in bets:
             user = users_by_id.get(bet.user_id)

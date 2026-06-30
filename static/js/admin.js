@@ -986,6 +986,15 @@ function renderMatches() {
     `).join("");
 }
 
+function formatAdminMatchScore(match) {
+    const score = `${Number(match.home_score || 0)} - ${Number(match.away_score || 0)}`;
+    if (match.home_penalty_score !== null && match.home_penalty_score !== undefined
+        && match.away_penalty_score !== null && match.away_penalty_score !== undefined) {
+        return `${score} (pen ${Number(match.home_penalty_score)} - ${Number(match.away_penalty_score)})`;
+    }
+    return score;
+}
+
 function renderMatchCard(match) {
     const status = normalizeMatchStatus(match.status);
     const canEdit = status !== "finished";
@@ -1011,7 +1020,7 @@ function renderMatchCard(match) {
                         <div>Giờ bắt đầu: <span class="font-semibold text-white">${escapeHtml(formatDateTime(match.start_time))}</span></div>
                         <div>Giờ kết thúc: <span class="font-semibold text-white">${escapeHtml(formatDateTime(match.end_time))}</span></div>
                         <div>Kèo: <span class="font-semibold text-white">${Number(match.handicap || 0)}</span></div>
-                        <div>Tỷ số: <span class="font-semibold text-white">${Number(match.home_score || 0)} - ${Number(match.away_score || 0)}</span></div>
+                        <div>Tỷ số: <span class="font-semibold text-white">${escapeHtml(formatAdminMatchScore(match))}</span></div>
                     </div>
                 </div>
                 <div class="flex flex-wrap gap-2 lg:max-w-sm lg:justify-end">
@@ -1033,6 +1042,10 @@ function resolveForm(match) {
             <input class="w-20 rounded-2xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" type="number" min="0" step="1" value="${Number(match.home_score || 0)}" aria-label="Tỷ số đội nhà">
             <span class="text-slate-500">-</span>
             <input class="w-20 rounded-2xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" type="number" min="0" step="1" value="${Number(match.away_score || 0)}" aria-label="Tỷ số đội khách">
+            <span class="ml-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Pen</span>
+            <input class="w-16 rounded-2xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none focus:border-violet-500" type="number" min="0" step="1" value="${match.home_penalty_score ?? ""}" placeholder="N" aria-label="Penalty đội nhà">
+            <span class="text-slate-500">-</span>
+            <input class="w-16 rounded-2xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none focus:border-violet-500" type="number" min="0" step="1" value="${match.away_penalty_score ?? ""}" placeholder="K" aria-label="Penalty đội khách">
             <button type="submit" class="rounded-2xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">Giải trận</button>
         </form>
     `;
@@ -1175,17 +1188,37 @@ async function resolveMatch(event, matchId) {
     const inputs = form.querySelectorAll("input");
     const homeScore = Number(inputs[0].value);
     const awayScore = Number(inputs[1].value);
+    const homePenaltyRaw = String(inputs[2]?.value || "").trim();
+    const awayPenaltyRaw = String(inputs[3]?.value || "").trim();
     if (!Number.isInteger(homeScore) || homeScore < 0 || !Number.isInteger(awayScore) || awayScore < 0) {
         showToast("Tỷ số phải là số nguyên không âm.", "error");
         return false;
     }
-    if (!window.confirm(`Giải trận #${matchId} với tỷ số ${homeScore} - ${awayScore}?`)) return false;
+    const payload = { home_score: homeScore, away_score: awayScore };
+    const hasPenalty = homePenaltyRaw !== "" || awayPenaltyRaw !== "";
+    let penaltyConfirmText = "";
+    if (hasPenalty) {
+        const homePenaltyScore = Number(homePenaltyRaw);
+        const awayPenaltyScore = Number(awayPenaltyRaw);
+        if (!Number.isInteger(homePenaltyScore) || homePenaltyScore < 0 || !Number.isInteger(awayPenaltyScore) || awayPenaltyScore < 0) {
+            showToast("Tỷ số penalty phải nhập đủ và là số nguyên không âm.", "error");
+            return false;
+        }
+        if (homePenaltyScore === awayPenaltyScore) {
+            showToast("Tỷ số penalty phải phân thắng bại.", "error");
+            return false;
+        }
+        payload.home_penalty_score = homePenaltyScore;
+        payload.away_penalty_score = awayPenaltyScore;
+        penaltyConfirmText = `, penalty ${homePenaltyScore} - ${awayPenaltyScore}`;
+    }
+    if (!window.confirm(`Giải trận #${matchId} với tỷ số ${homeScore} - ${awayScore}${penaltyConfirmText}?`)) return false;
 
     try {
         const data = await fetchJson(`/api/v1/admin/resolve-match/${matchId}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ home_score: homeScore, away_score: awayScore }),
+            body: JSON.stringify(payload),
         });
         await Promise.all([fetchMatches(), fetchOverview(), fetchUsers(state.userSearch)]);
         showToast(data.message || "Đã giải trận.", "success");

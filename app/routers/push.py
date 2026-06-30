@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Notification, PushSubscription, User
+from app.services.shared import _serialize_utc_datetime
 
 logger = logging.getLogger(__name__)
 ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
@@ -209,7 +210,7 @@ async def list_notifications(
                 "body": n.body,
                 "url": n.url,
                 "is_read": n.is_read,
-                "created_at": n.created_at.isoformat() if n.created_at else None,
+                "created_at": _serialize_utc_datetime(n.created_at),
             }
             for n in rows
         ],

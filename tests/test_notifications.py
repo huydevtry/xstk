@@ -1,8 +1,10 @@
 import io
 import unittest
 import urllib.error
+from datetime import datetime
 
 from app.notifications import _describe_telegram_http_error
+from app.services.shared import _serialize_utc_datetime
 
 
 class TelegramNotificationErrorTests(unittest.TestCase):
@@ -18,6 +20,14 @@ class TelegramNotificationErrorTests(unittest.TestCase):
         self.assertEqual(
             _describe_telegram_http_error(exc),
             "HTTP 400: Bad Request: chat not found",
+        )
+
+
+class NotificationTimeSerializationTests(unittest.TestCase):
+    def test_notification_time_is_serialized_as_utc_plus_seven(self):
+        self.assertEqual(
+            _serialize_utc_datetime(datetime(2026, 6, 30, 1, 2, 3)),
+            "2026-06-30T08:02:03+07:00",
         )
 
 

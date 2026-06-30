@@ -207,6 +207,8 @@ def build_matches(now: datetime) -> list[dict]:
             "handicap": 0.0,
             "home_score": 2,
             "away_score": 2,
+            "home_penalty_score": 4,
+            "away_penalty_score": 3,
             "status": "finished",
             "start_time": now - timedelta(hours=14),
         },
@@ -326,9 +328,9 @@ def insert_matches(cursor: sqlite3.Cursor, matches: list[dict], now: datetime) -
             """
             INSERT INTO matches (
                 id, home_team, home_icon, away_team, away_icon,
-                home_score, away_score, handicap, status,
+                home_score, away_score, home_penalty_score, away_penalty_score, handicap, status,
                 start_time, end_time, resolved_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 payload["id"],
@@ -338,6 +340,8 @@ def insert_matches(cursor: sqlite3.Cursor, matches: list[dict], now: datetime) -
                 payload["away_icon"],
                 payload["home_score"],
                 payload["away_score"],
+                payload.get("home_penalty_score"),
+                payload.get("away_penalty_score"),
                 payload["handicap"],
                 payload["status"],
                 dt_text(payload["start_time"]),
@@ -346,6 +350,14 @@ def insert_matches(cursor: sqlite3.Cursor, matches: list[dict], now: datetime) -
             ),
         )
     return match_map
+
+
+def ensure_match_penalty_columns(cursor: sqlite3.Cursor) -> None:
+    columns = {row[1] for row in cursor.execute("PRAGMA table_info(matches)").fetchall()}
+    if "home_penalty_score" not in columns:
+        cursor.execute("ALTER TABLE matches ADD COLUMN home_penalty_score INTEGER")
+    if "away_penalty_score" not in columns:
+        cursor.execute("ALTER TABLE matches ADD COLUMN away_penalty_score INTEGER")
 
 
 def build_users(now: datetime) -> list[dict]:
@@ -585,6 +597,7 @@ def main() -> None:
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
+        ensure_match_penalty_columns(cursor)
         cleanup_seed_data(cursor)
         match_map = insert_matches(cursor, matches, now)
         bets = build_bets(users, match_map, rng)
