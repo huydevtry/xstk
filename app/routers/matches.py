@@ -184,8 +184,7 @@ async def get_upcoming_matches(db: AsyncSession = Depends(get_db)):
         )
         .outerjoin(pool_q, Match.id == pool_q.c.match_id)
         .outerjoin(min_stake_q, Match.id == min_stake_q.c.match_id)
-        .where(Match.status != MatchStatus.finished)
-        .order_by(case((Match.status == MatchStatus.live, 0), else_=1), Match.start_time.asc())
+        .order_by(Match.start_time.asc(), Match.id.asc())
     )
 
     rows = (await db.execute(query)).all()
@@ -199,6 +198,8 @@ async def get_upcoming_matches(db: AsyncSession = Depends(get_db)):
             "away_icon": r.Match.away_icon,
             "handicap": r.Match.handicap,
             "status": r.Match.status,
+            "home_score": r.Match.home_score,
+            "away_score": r.Match.away_score,
             "start_time": _serialize_app_datetime(r.Match.start_time),
             "end_time": _serialize_app_datetime(_match_effective_end_time(r.Match)),
             "result_published": bool(r.Match.resolved_at),

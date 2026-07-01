@@ -7,6 +7,9 @@ let finishedSectionLoaded = false;
 let finishedSectionRefreshTimer = null;
 let lastMatchesSignature = "";
 let expandedMatchGroups = new Set();
+let selectedMatchDate = "";
+let currentMatchGroups = {};
+let currentMatchDates = [];
 let leaderboardNextOffset = 0;
 let leaderboardLoading = false;
 let appSettings = {
@@ -137,6 +140,130 @@ function formatVNDateTime(value) {
         hour: "2-digit",
         minute: "2-digit",
     });
+}
+
+function localDateKey(value = new Date()) {
+    const parts = getVNDateParts(value);
+    return parts ? `${parts.year}-${parts.month}-${parts.day}` : "";
+}
+
+function formatMatchDateTitle(dateKey) {
+    const [year, month, day] = String(dateKey || "").split("-").map(Number);
+    if (!year || !month || !day) return "Trận đấu";
+    const date = new Date(Date.UTC(year, month - 1, day, 12));
+    const text = date.toLocaleDateString("vi-VN", {
+        timeZone: "UTC",
+        weekday: "long",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+    });
+    return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function formatTimelineWeekday(dateKey) {
+    const [year, month, day] = String(dateKey || "").split("-").map(Number);
+    if (!year || !month || !day) return "--";
+    const date = new Date(Date.UTC(year, month - 1, day, 12));
+    const weekday = date.toLocaleDateString("vi-VN", { timeZone: "UTC", weekday: "short" });
+    return weekday.replace(".", "").toUpperCase();
+}
+
+function relativeDayLabel(dateKey) {
+    const today = localDateKey();
+    if (dateKey === today) return "H.Nay";
+
+    const [year, month, day] = String(dateKey || "").split("-").map(Number);
+    if (!year || !month || !day) return formatTimelineWeekday(dateKey);
+
+    const date = Date.UTC(year, month - 1, day);
+    const [todayYear, todayMonth, todayDay] = today.split("-").map(Number);
+    const todayDate = Date.UTC(todayYear, todayMonth - 1, todayDay);
+    const diffDays = Math.round((date - todayDate) / 86_400_000);
+    if (diffDays === 1) return "Mai";
+    if (diffDays === -1) return "Qua";
+    return formatTimelineWeekday(dateKey);
+}
+
+function chooseDefaultMatchDate(sortedDates, grouped) {
+    if (selectedMatchDate && grouped[selectedMatchDate]) return selectedMatchDate;
+
+    const today = localDateKey();
+    if (grouped[today]) return today;
+
+    const nextPlayableDate = sortedDates.find(dateKey =>
+        dateKey >= today && (grouped[dateKey] || []).some(match => String(match.status || "").toLowerCase() !== "finished")
+    );
+    return nextPlayableDate || sortedDates[sortedDates.length - 1] || "";
+}
+
+function renderMatchDateTimeline(sortedDates, grouped) {
+    const timeline = document.getElementById("match-date-timeline");
+    if (!timeline) return;
+
+    if (!sortedDates.length) {
+        timeline.innerHTML = `<div class="py-3 text-sm text-slate-400">Chưa có ngày thi đấu.</div>`;
+        return;
+    }
+
+    const today = localDateKey();
+    timeline.innerHTML = sortedDates.map(dateKey => {
+        const matches = grouped[dateKey] || [];
+        const isActive = dateKey === selectedMatchDate;
+        const isPast = dateKey < today;
+        const hasLive = matches.some(match => isLiveMatch(match));
+        const hasUpcoming = matches.some(match => String(match.status || "").toLowerCase() === "upcoming");
+        const dayNumber = escapeHtml(String(dateKey.split("-")[2] || ""));
+        const label = escapeHtml(relativeDayLabel(dateKey));
+        const activeClass = isActive
+            ? "w-14 bg-blue-600 text-white shadow-md shadow-blue-200/60 scale-105"
+            : `w-12 text-slate-700 hover:bg-slate-50 ${isPast ? "opacity-45 hover:opacity-80" : ""}`;
+        const labelClass = isActive ? "text-blue-100" : "text-slate-500";
+        const dayClass = isActive ? "text-white text-lg font-black" : "text-slate-800 text-base font-bold";
+        const dot = hasLive
+            ? `<span class="absolute -right-1 -top-1 flex h-3 w-3"><span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span><span class="relative inline-flex h-3 w-3 rounded-full border-2 border-white bg-red-500"></span></span>`
+            : hasUpcoming && !isActive
+                ? `<span class="absolute -bottom-1 h-1 w-1 rounded-full bg-slate-300"></span>`
+                : "";
+
+        return `
+            <button type="button"
+                id="match-date-${dateKey}"
+                class="relative flex shrink-0 snap-start flex-col items-center justify-center rounded-2xl py-2 transition ${activeClass}"
+                onclick="selectMatchDate('${dateKey}')"
+                aria-pressed="${isActive ? "true" : "false"}"
+                title="${escapeHtml(formatMatchDateTitle(dateKey))} - ${matches.length} trận">
+                <span class="mb-1 text-[10px] font-bold uppercase tracking-wider ${labelClass}">${label}</span>
+                <span class="leading-none ${dayClass}">${dayNumber}</span>
+                ${dot}
+            </button>
+        `;
+    }).join("");
+
+    requestAnimationFrame(() => {
+        const activeDay = document.getElementById(`match-date-${selectedMatchDate}`);
+        if (!activeDay) return;
+        timeline.scrollLeft = activeDay.offsetLeft - (timeline.offsetWidth / 2) + (activeDay.offsetWidth / 2);
+    });
+}
+
+function renderSelectedMatchDate() {
+    const listEl = document.getElementById("match-list");
+    const titleEl = document.getElementById("selected-match-date-title");
+    const countEl = document.getElementById("selected-match-count");
+    if (!listEl) return;
+
+    const matches = currentMatchGroups[selectedMatchDate] || [];
+    if (titleEl) titleEl.textContent = selectedMatchDate ? formatMatchDateTitle(selectedMatchDate) : "Trận đấu";
+    if (countEl) countEl.textContent = `${matches.length} trận`;
+
+    if (!matches.length) {
+        listEl.innerHTML = `<div class="rounded-2xl border border-slate-200 bg-white px-4 py-12 text-center text-sm text-slate-500 shadow-sm">Ngày này chưa có trận đấu.</div>`;
+        return;
+    }
+
+    listEl.innerHTML = matches.map(match => renderMatchCard(match)).join("");
+    matches.forEach(match => fetchAvatarStack(match.id));
 }
 
 function getQuoteByDetail(detail) {
@@ -298,6 +425,7 @@ async function fetchUpcomingMatches() {
         const matchesSignature = JSON.stringify(matches);
 
         if (matchesSignature === lastMatchesSignature && listEl?.children.length) {
+            (currentMatchGroups[selectedMatchDate] || []).forEach(match => fetchAvatarStack(match.id));
             return;
         }
 
@@ -308,54 +436,45 @@ async function fetchUpcomingMatches() {
         if (!matches.length) {
             listEl.innerHTML = `<div class="text-center py-12 text-slate-500 text-sm">Hiện chưa có trận đấu nào đang mở cược.</div>`;
             expandedMatchGroups = new Set();
+            currentMatchGroups = {};
+            currentMatchDates = [];
+            selectedMatchDate = "";
+            renderMatchDateTimeline([], {});
             return;
         }
 
-        // Group theo ngày
+        const sortedMatches = [...matches].sort((a, b) => {
+            const aTime = new Date(a.start_time || 0).getTime();
+            const bTime = new Date(b.start_time || 0).getTime();
+            return aTime - bTime;
+        });
+
         const grouped = {};
-        matches.forEach(m => {
+        sortedMatches.forEach(m => {
             const parts = getVNDateParts(m.start_time);
             const key = parts ? `${parts.year}-${parts.month}-${parts.day}` : "unknown";
             (grouped[key] = grouped[key] || []).push(m);
         });
 
         const sortedDates = Object.keys(grouped).sort();
-        const nextExpandedGroups = new Set();
-        let html = "";
-
-        sortedDates.forEach((dateKey, idx) => {
-            const dateMatches = grouped[dateKey];
-            const displayDate = dateKey.split("-").reverse().join("/");
-            const expanded = expandedMatchGroups.size ? expandedMatchGroups.has(dateKey) : idx === 0;
-            if (expanded) nextExpandedGroups.add(dateKey);
-
-            const matchesHtml = dateMatches.map(m => renderMatchCard(m)).join("");
-
-            html += `
-                <div class="mb-4">
-                    <button onclick="toggleGroup('${dateKey}')" class="w-full flex justify-between items-center bg-white p-3 rounded-lg border border-slate-200 focus:outline-none mb-2 active:bg-sky-50 shadow-sm">
-                        <span class="font-bold text-sky-700 text-sm">📅 Ngày ${displayDate} <span class="text-slate-500 text-xs font-normal">(${dateMatches.length} trận)</span></span>
-                        <svg id="icon-${dateKey}" class="w-5 h-5 text-slate-400 transform transition-transform duration-200 ${expanded ? "rotate-180" : ""}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                        </svg>
-                    </button>
-                    <div id="content-${dateKey}" class="${expanded ? "" : "hidden"}">
-                        ${matchesHtml}
-                    </div>
-                </div>`;
-        });
-
-        expandedMatchGroups = nextExpandedGroups;
-        listEl.innerHTML = html;
-
-        // Sau khi render xong, fetch avatar stacks cho tất cả trận
-        matches.forEach(m => fetchAvatarStack(m.id));
+        currentMatchGroups = grouped;
+        currentMatchDates = sortedDates;
+        selectedMatchDate = chooseDefaultMatchDate(sortedDates, grouped);
+        renderMatchDateTimeline(sortedDates, grouped);
+        renderSelectedMatchDate();
 
     } catch (e) {
         console.error(e);
         listEl.innerHTML = `<div class="text-center py-8 text-red-400 text-xs">Không thể tải danh sách trận đấu. Vui lòng thử lại sau!</div>`;
     }
 }
+
+window.selectMatchDate = function(dateKey) {
+    if (!currentMatchGroups[dateKey]) return;
+    selectedMatchDate = dateKey;
+    renderMatchDateTimeline(currentMatchDates, currentMatchGroups);
+    renderSelectedMatchDate();
+};
 
 async function fetchLatestFinishedMatch() {
     const el = document.getElementById("latest-finished-body");

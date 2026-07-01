@@ -445,11 +445,93 @@
         `;
     }
 
-    window.fetchUpcomingMatches = async function fetchUpcomingMatchesWithTaunt() {
-        if (visibleMatchIdsWithTaunts().length) {
-            await refreshVisibleTauntSlots();
-            return;
+    function renderTeamLogo(src, name, muted = false) {
+        const logoClass = `h-full w-full object-cover${muted ? " opacity-80" : ""}`;
+        if (src) {
+            return `<img src="${src}" class="${logoClass}" alt="${escapeAttr(name || "")}">`;
         }
+        const initials = escapeHtml(String(name || "?").slice(0, 2).toUpperCase());
+        return `<span class="flex h-full w-full items-center justify-center bg-slate-100 text-xs font-black text-slate-400">${initials}</span>`;
+    }
+
+    function renderStatusPill(match, timeStr, endTimeStr) {
+        const status = String(match.status || "upcoming").toLowerCase();
+        if (status === "live") {
+            return `
+                <span class="inline-flex items-center gap-2 rounded-full border border-red-100 bg-red-50 px-3 py-1.5 text-xs font-black tracking-wide text-red-600 shadow-sm">
+                    <span class="relative flex h-2.5 w-2.5">
+                        <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
+                        <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600"></span>
+                    </span>
+                    LIVE
+                </span>
+            `;
+        }
+        if (status === "finished") {
+            return `
+                <span class="inline-flex items-center gap-2 rounded-full bg-slate-200 px-3 py-1.5 text-xs font-black text-slate-500 shadow-inner">
+                    <span>FT</span>
+                    <span>Đã kết thúc</span>
+                </span>
+            `;
+        }
+        return `
+            <span class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm font-bold text-slate-600">
+                <span>${timeStr}</span>
+                <span class="text-slate-300">→</span>
+                <span>${endTimeStr}</span>
+            </span>
+        `;
+    }
+
+    function renderCenterMatchState(match, handicapText) {
+        const status = String(match.status || "upcoming").toLowerCase();
+        const homeScore = Number(match.home_score || 0);
+        const awayScore = Number(match.away_score || 0);
+        const handicapBadge = `
+            <div class="inline-flex max-w-full items-center gap-1 rounded-full border ${status === "upcoming" ? "border-slate-200 bg-slate-50 text-slate-600" : "border-blue-200 bg-blue-50 text-blue-600"} px-2.5 py-1 text-[10px] font-bold">
+                <span>${handicapText}</span>
+            </div>
+        `;
+
+        if (status === "upcoming") {
+            return `
+                <div class="flex flex-col items-center justify-center">
+                    <span class="mb-2 text-xl font-black italic text-slate-200 sm:text-2xl">VS</span>
+                    ${handicapBadge}
+                </div>
+            `;
+        }
+
+        return `
+            <div class="flex flex-col items-center justify-center">
+                <div class="mb-2 flex items-center justify-center gap-2">
+                    <span class="text-3xl font-black ${status === "finished" ? "text-slate-500" : "text-slate-800"} sm:text-4xl">${homeScore}</span>
+                    <span class="text-xl font-light text-slate-300">-</span>
+                    <span class="text-3xl font-black ${status === "finished" ? "text-slate-700" : "text-slate-800"} sm:text-4xl">${awayScore}</span>
+                </div>
+                ${handicapBadge}
+            </div>
+        `;
+    }
+
+    function renderFinishedPoolResult(match, totalPool, myBet) {
+        const published = Boolean(match.result_published);
+        const myBetText = myBet
+            ? `Bạn chọn ${escapeHtml(choiceLabel(myBet.choice))}, đặt ${formatCoins(myBet.stake)}.`
+            : "Bạn chưa tham gia trận này.";
+        return `
+            <div class="rounded-xl bg-slate-100 p-3 text-center">
+                <p class="text-xs font-bold text-slate-600">
+                    ${published ? "Pool đã trả thưởng." : "Trận đã kết thúc, đang chờ công bố kết quả."}
+                </p>
+                <p class="mt-1 text-[11px] font-medium text-slate-500">Tổng quỹ ${formatCoins(totalPool)} · ${myBetText}</p>
+            </div>
+        `;
+    }
+
+    window.fetchUpcomingMatches = async function fetchUpcomingMatchesWithTaunt() {
+        clearAllTauntRotators();
         return baseFetchUpcomingMatches();
     };
 
@@ -505,7 +587,7 @@
         const timeStr = formatVNTime(match.start_time);
         const { id, home_team, home_icon, away_team, away_icon, handicap, stakes_home, stakes_draw, stakes_away, total_pool } = match;
         matchCardsById.set(Number(id), match);
-        const status = String(match.status || "upcoming");
+        const status = String(match.status || "upcoming").toLowerCase();
         const isLive = isLiveMatch(match);
         const hasPlaced = placedBets.has(id);
         const myBet = myBetsByMatchId.get(Number(id)) || null;
@@ -546,23 +628,28 @@
                 <div id="stake-panel-${id}" class="hidden"></div>
             `;
 
-        const homeIconHtml = homeIconSrc ? `<img src="${homeIconSrc}" class="match-team-logo" alt="">` : "";
-        const awayIconHtml = awayIconSrc ? `<img src="${awayIconSrc}" class="match-team-logo" alt="">` : "";
-        const liveBadge = isLive ? `
-            <span class="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-600">
-                <span class="live-dot"></span>
-                LIVE
-            </span>` : "";
-
         const handicapText = formatHandicapText(home_team, away_team, handicap);
         const handicapTooltip = buildHandicapTooltip(home_team, away_team, handicap);
+        const isFinished = status === "finished";
+        const cardClass = isLive
+            ? "match-card-bg relative overflow-hidden rounded-2xl border border-red-100 p-4 shadow-sm ring-1 ring-red-50 sm:p-5"
+            : isFinished
+                ? "match-card-bg rounded-2xl border border-slate-200 bg-slate-50/60 p-4 opacity-85 shadow-sm grayscale-[15%] sm:p-5"
+                : "match-card-bg rounded-2xl border border-slate-200 p-4 shadow-sm sm:p-5";
+        const headerBorder = isFinished ? "border-slate-200" : "border-gray-100";
+        const resultArea = isFinished
+            ? renderFinishedPoolResult(match, total_pool, myBet)
+            : `
+                ${renderPoolBlock(id, total_pool, stakes_home, stakes_draw, stakes_away, isOddHandicap)}
+                ${betArea}
+            `;
 
         return `
-            <div class="bg-white border border-slate-200 hover:border-sky-300 rounded-2xl p-3 sm:p-4 shadow-sm transition duration-200 mb-3 last:mb-0">
-                <div class="flex items-center justify-between mb-2">
-                    <div class="flex items-center gap-2 flex-wrap">
-                        ${liveBadge}
-                        <span class="match-time-block">⏰ ${timeStr} <span class="match-time-sep">→</span> ${endTimeStr}</span>
+            <div class="${cardClass} mb-5 last:mb-0">
+                ${isLive ? `<div class="absolute left-0 top-0 h-1 w-full bg-gradient-to-r from-red-500 to-orange-400"></div>` : ""}
+                <div class="mb-5 flex items-center justify-between border-b ${headerBorder} pb-3">
+                    <div class="flex min-w-0 flex-wrap items-center gap-2">
+                        ${renderStatusPill(match, timeStr, endTimeStr)}
                     </div>
                     <div class="match-card-actions">
                         ${canEditBet ? `
@@ -585,30 +672,27 @@
                     </div>
                 </div>
 
-                <div class="flex items-center justify-between my-2 px-1">
-                    <div class="w-2/5 text-center flex flex-col items-center">
-                        <div class="match-team-logo-wrap">${homeIconHtml}</div>
-                        <p class="text-[13px] font-bold text-slate-900 truncate w-full">${homeTeam}</p>
-                        <span class="text-[10px] text-slate-500 block mt-0.5">Chủ nhà</span>
+                <div class="mb-6 flex items-center justify-between">
+                    <div class="flex w-1/3 flex-col items-center">
+                        <div class="mb-2 h-10 w-14 overflow-hidden rounded border border-gray-200 bg-white shadow-sm sm:h-12 sm:w-16">
+                            ${renderTeamLogo(homeIconSrc, home_team, isFinished)}
+                        </div>
+                        <p class="w-full truncate text-center text-sm font-black ${isFinished ? "text-slate-600" : "text-slate-800"} sm:text-base">${homeTeam}</p>
+                        <span class="mt-1 text-[10px] uppercase tracking-wider text-slate-500">Chủ nhà</span>
                     </div>
-                    <div class="w-1/5 text-center text-slate-400 font-black text-xs">VS</div>
-                    <div class="w-2/5 text-center flex flex-col items-center">
-                        <div class="match-team-logo-wrap">${awayIconHtml}</div>
-                        <p class="text-[13px] font-bold text-slate-900 truncate w-full">${awayTeam}</p>
-                        <span class="text-[10px] text-slate-500 block mt-0.5">Khách</span>
+                    <div class="flex w-1/3 justify-center px-1 text-center" tabindex="0" data-tooltip="${escapeAttr(handicapTooltip)}">
+                        ${renderCenterMatchState(match, handicapText)}
+                    </div>
+                    <div class="flex w-1/3 flex-col items-center">
+                        <div class="mb-2 h-10 w-14 overflow-hidden rounded border border-gray-200 bg-white shadow-sm sm:h-12 sm:w-16">
+                            ${renderTeamLogo(awayIconSrc, away_team, false)}
+                        </div>
+                        <p class="w-full truncate text-center text-sm font-black text-slate-800 sm:text-base">${awayTeam}</p>
+                        <span class="mt-1 text-[10px] uppercase tracking-wider text-slate-500">Khách</span>
                     </div>
                 </div>
 
-                <div class="match-handicap-row">
-                    <div class="match-handicap-info" tabindex="0" data-tooltip="${escapeAttr(handicapTooltip)}">
-                        <span class="match-handicap-icon">i</span>
-                        <span>${handicapText}</span>
-                    </div>
-                </div>
-
-                ${renderPoolBlock(id, total_pool, stakes_home, stakes_draw, stakes_away, isOddHandicap)}
-
-                ${betArea}
+                ${resultArea}
             </div>
         `;
     };

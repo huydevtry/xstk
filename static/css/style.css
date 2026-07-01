@@ -8,6 +8,16 @@ body {
 ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 999px; }
 ::-webkit-scrollbar-track { background: #e2e8f0; }
 
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.match-card-bg {
+    background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+}
+
 .composer-textarea {
     transition: height 0.2s ease, box-shadow 0.2s ease;
 }

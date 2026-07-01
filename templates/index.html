@@ -34,29 +34,28 @@
             </div>
         </section>
 
-        <div class="flex items-center justify-between gap-3 mb-4">
-            <h2 class="text-base font-bold uppercase tracking-wide text-slate-500">Gieo Quẻ Nhận Lộc</h2>
-            <!-- <span class="text-xs text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">Live Mode</span> -->
+        <div class="sticky top-[var(--home-sticky-offset,4.25rem)] z-30 -mx-3 mb-4 border-b border-slate-200/80 bg-white/95 px-3 pb-3 pt-3 shadow-sm backdrop-blur sm:-mx-4 sm:px-4">
+            <div class="flex items-center justify-between gap-3">
+                <h2 class="text-lg font-black tracking-tight text-slate-800">Lịch thi đấu</h2>
+                <span id="selected-match-count" class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500">Đang tải</span>
+            </div>
+            <div id="match-date-timeline" class="hide-scrollbar mt-3 flex snap-x items-center gap-1.5 overflow-x-auto px-0.5 pb-1">
+                <div class="h-14 w-12 shrink-0 animate-pulse rounded-2xl bg-slate-100"></div>
+                <div class="h-14 w-12 shrink-0 animate-pulse rounded-2xl bg-slate-100"></div>
+                <div class="h-14 w-14 shrink-0 animate-pulse rounded-2xl bg-slate-200"></div>
+                <div class="h-14 w-12 shrink-0 animate-pulse rounded-2xl bg-slate-100"></div>
+                <div class="h-14 w-12 shrink-0 animate-pulse rounded-2xl bg-slate-100"></div>
+            </div>
+        </div>
+
+        <div class="mb-4 flex items-end justify-between gap-3">
+            <h2 id="selected-match-date-title" class="text-sm font-bold uppercase tracking-wide text-slate-500">Trận đấu</h2>
         </div>
 
         <div id="match-list" class="match-list-wide space-y-4">
             <div class="animate-pulse bg-white h-28 rounded-xl border border-slate-200 shadow-sm"></div>
             <div class="animate-pulse bg-white h-28 rounded-xl border border-slate-200 shadow-sm"></div>
         </div>
-
-        <section class="mt-6 mb-6">
-            <button onclick="toggleFinishedSection()" class="w-full flex items-center justify-between gap-3 mb-3 text-left">
-                <h2 class="text-base font-bold uppercase tracking-wide text-slate-500">📋 5 trận đã hoàn tất</h2>
-                <span id="finished-toggle-btn" class="text-xs text-sky-700 bg-sky-50 px-2.5 py-1 rounded-full border border-sky-200 hover:bg-sky-100 transition-colors flex-shrink-0">
-                    Xem kết quả ▸
-                </span>
-            </button>
-            <div id="finished-section-container" class="hidden">
-                <div id="latest-finished-body" class="space-y-2">
-                    <div class="animate-pulse py-8 text-center text-slate-400 text-sm">Đang tải...</div>
-                </div>
-            </div>
-        </section>
 
         <!-- Báº£ng Phong Tháº§n -->
         <div class="leaderboard-section">
