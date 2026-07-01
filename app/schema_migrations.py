@@ -78,6 +78,8 @@ async def ensure_sqlite_schema() -> None:
             await conn.execute(text("ALTER TABLE matches ADD COLUMN home_penalty_score INTEGER"))
         if "away_penalty_score" not in existing_match_columns:
             await conn.execute(text("ALTER TABLE matches ADD COLUMN away_penalty_score INTEGER"))
+        if "round" not in existing_match_columns:
+            await conn.execute(text("ALTER TABLE matches ADD COLUMN round VARCHAR"))
 
         result = await conn.execute(text("PRAGMA table_info(notifications)"))
         existing_notification_columns = {row[1] for row in result.fetchall()}

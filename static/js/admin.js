@@ -1021,6 +1021,7 @@ function renderMatchCard(match) {
                         <div>Giờ kết thúc: <span class="font-semibold text-white">${escapeHtml(formatDateTime(match.end_time))}</span></div>
                         <div>Kèo: <span class="font-semibold text-white">${Number(match.handicap || 0)}</span></div>
                         <div>Tỷ số: <span class="font-semibold text-white">${escapeHtml(formatAdminMatchScore(match))}</span></div>
+                        ${match.round ? `<div class="xl:col-span-4">Vòng đấu: <span class="font-semibold text-violet-300">${escapeHtml(match.round)}</span></div>` : ""}
                     </div>
                 </div>
                 <div class="flex flex-wrap gap-2 lg:max-w-sm lg:justify-end">
@@ -1077,6 +1078,7 @@ function readMatchPayload() {
         home_icon: homeCountryCode ? buildFlagUrl(homeCountryCode) : null,
         away_icon: awayCountryCode ? buildFlagUrl(awayCountryCode) : null,
         handicap: Number(document.getElementById("handicap").value || 0),
+        round: document.getElementById("match-round").value || null,
         status: document.getElementById("status").value,
         start_time: apiDateTimeValueFromParts(startDate, startTime),
         end_time: apiDateTimeValue(document.getElementById("end-time").value),
@@ -1130,6 +1132,7 @@ function editMatch(matchId) {
     updateFlagPreview("home-flag-preview", document.getElementById("home-country-code").value);
     updateFlagPreview("away-flag-preview", document.getElementById("away-country-code").value);
     document.getElementById("handicap").value = Number(match.handicap || 0);
+    document.getElementById("match-round").value = match.round || "";
     document.getElementById("status").value = normalizeMatchStatus(match.status) === "live" ? "live" : "upcoming";
     document.getElementById("start-date").value = localDateValue(match.start_time);
     document.getElementById("start-time").value = localTimeValue(match.start_time);
@@ -1145,6 +1148,7 @@ function resetMatchForm() {
     document.getElementById("match-form")?.reset();
     document.getElementById("match-id").value = "";
     document.getElementById("handicap").value = "0";
+    document.getElementById("match-round").value = "";
     document.getElementById("status").value = "upcoming";
     document.getElementById("home-country-code").value = "";
     document.getElementById("away-country-code").value = "";

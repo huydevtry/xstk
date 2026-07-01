@@ -95,6 +95,10 @@
 
     function teamIcon(icon, name, className = "h-7 w-10") {
         const src = safeImageSrc(icon);
+        const isTbd = !name || String(name).trim().toUpperCase() === "TBD";
+        if (isTbd) {
+            return `<span class="${className} inline-flex items-center justify-center rounded-none border-2 border-dashed border-slate-300 bg-slate-100 text-xs font-black text-slate-400">?</span>`;
+        }
         if (src) {
             return `<img src="${src}" alt="" class="${className} rounded-none border border-slate-200 bg-white object-contain shadow-sm">`;
         }
@@ -138,6 +142,21 @@
             </span>`;
     }
 
+    // Round priority for knockout sorting (lower = shown first in upcoming section)
+    const ROUND_PRIORITY = {
+        "Vòng bảng": 10,
+        "Vòng 1/32": 20,
+        "Vòng 1/16": 30,
+        "Tứ kết": 40,
+        "Bán kết": 50,
+        "Tranh hạng 3": 60,
+        "Chung kết": 70,
+    };
+
+    function roundPriority(match) {
+        return ROUND_PRIORITY[match.round] ?? 99;
+    }
+
     function sortMatches(matches) {
         const weight = { live: 0, upcoming: 1, finished: 2 };
         return [...matches].sort((a, b) => {
@@ -148,6 +167,11 @@
             const aTime = new Date(a.start_time || 0).getTime();
             const bTime = new Date(b.start_time || 0).getTime();
             if (aStatus === "finished") return bTime - aTime;
+            // For upcoming: sort by round priority first, then by time
+            if (aStatus === "upcoming") {
+                const roundDiff = roundPriority(a) - roundPriority(b);
+                if (roundDiff !== 0) return roundDiff;
+            }
             return aTime - bTime;
         });
     }
@@ -207,11 +231,26 @@
     }
 
     function matchRoundLabel(match) {
-        return match.round_label
-            || match.round
+        return match.round
+            || match.round_label
             || match.stage_label
             || match.stage
             || (match.result_published ? "Completed" : formatTimeRange(match));
+    }
+
+    function roundBadgeClass(round) {
+        const r = String(round || "");
+        if (r === "Chung kết") return "border-amber-300 bg-amber-50 text-amber-800";
+        if (r === "Bán kết") return "border-violet-200 bg-violet-50 text-violet-800";
+        if (r === "Tứ kết") return "border-sky-200 bg-sky-50 text-sky-800";
+        if (r === "Tranh hạng 3") return "border-orange-200 bg-orange-50 text-orange-800";
+        if (r === "Vòng 1/16") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+        if (r === "Vòng 1/32") return "border-teal-200 bg-teal-50 text-teal-800";
+        return "border-slate-200 bg-slate-50 text-slate-700";
+    }
+
+    function isTeamTbd(name) {
+        return !name || String(name).trim().toUpperCase() === "TBD" || String(name).trim().startsWith("W");
     }
 
     function renderScoreboardCard(match) {
@@ -222,6 +261,12 @@
         const awayWon = resultPublished && match.advancing_team?.side === "AWAY";
         const penaltyLine = match.penalty_score ? `Penalties: ${spacedScore(match.penalty_score)}` : "";
         const roundLabel = matchRoundLabel(match);
+        const homeTbd = isTeamTbd(match.home_team);
+        const awayTbd = isTeamTbd(match.away_team);
+        const homeDisplayName = homeTbd ? "TBD" : (match.home_team || "?");
+        const awayDisplayName = awayTbd ? "TBD" : (match.away_team || "?");
+        const roundBadgeHtml = match.round ? `
+            <span class="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold ${roundBadgeClass(match.round)}">${escapeHtml(match.round)}</span>` : "";
 
         return `
             <article class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition hover:border-sky-200 sm:px-6">
@@ -230,14 +275,15 @@
                         <div class="flex flex-wrap items-center gap-2">
                             <span class="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${statusBadgeClass(status)}">${escapeHtml(statusLabel(status))}</span>
                             ${status === "live" ? `<span class="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-white px-2 py-1 text-[11px] font-bold text-rose-600"><span class="h-2 w-2 rounded-full bg-rose-500 animate-pulse"></span>LIVE</span>` : ""}
+                            ${roundBadgeHtml}
                         </div>
                         ${advancementHtml(match)}
                     </div>
 
                     <div class="grid grid-cols-[minmax(0,1fr)_minmax(104px,auto)_minmax(0,1fr)] items-start gap-3 sm:gap-6">
                         <div class="min-w-0 text-center">
-                            <div class="mb-3 flex justify-center">${teamIcon(match.home_icon, match.home_team, "h-12 w-16 sm:h-14 sm:w-20")}</div>
-                            <div class="truncate text-base font-semibold ${homeWon ? "text-emerald-700" : "text-slate-950"} sm:text-lg">${escapeHtml(match.home_team || "?")}</div>
+                            <div class="mb-3 flex justify-center">${teamIcon(match.home_icon, homeTbd ? null : match.home_team, "h-12 w-16 sm:h-14 sm:w-20")}</div>
+                            <div class="truncate text-base font-semibold ${homeWon ? "text-emerald-700" : homeTbd ? "text-slate-400 italic" : "text-slate-950"} sm:text-lg">${escapeHtml(homeDisplayName)}</div>
                         </div>
 
                         <div class="text-center">
@@ -256,8 +302,8 @@
                         </div>
 
                         <div class="min-w-0 text-center">
-                            <div class="mb-3 flex justify-center">${teamIcon(match.away_icon, match.away_team, "h-12 w-16 sm:h-14 sm:w-20")}</div>
-                            <div class="truncate text-base font-semibold ${awayWon ? "text-emerald-700" : "text-slate-950"} sm:text-lg">${escapeHtml(match.away_team || "?")}</div>
+                            <div class="mb-3 flex justify-center">${teamIcon(match.away_icon, awayTbd ? null : match.away_team, "h-12 w-16 sm:h-14 sm:w-20")}</div>
+                            <div class="truncate text-base font-semibold ${awayWon ? "text-emerald-700" : awayTbd ? "text-slate-400 italic" : "text-slate-950"} sm:text-lg">${escapeHtml(awayDisplayName)}</div>
                         </div>
                     </div>
                 </button>
@@ -317,10 +363,13 @@
 
     function groupMatches(matches) {
         return matches.reduce((groups, match) => {
+            // Group key: round (if set) + date, so same-round matches on same day are together
             const parts = getVNDateParts(match.start_time);
-            const key = parts ? `${parts.year}-${parts.month}-${parts.day}` : "unknown";
-            if (!groups[key]) groups[key] = [];
-            groups[key].push(match);
+            const dateKey = parts ? `${parts.year}-${parts.month}-${parts.day}` : "unknown";
+            const roundKey = match.round || "";
+            const key = roundKey ? `${roundKey}||${dateKey}` : dateKey;
+            if (!groups[key]) groups[key] = { round: roundKey, date: dateKey, items: [] };
+            groups[key].items.push(match);
             return groups;
         }, {});
     }
@@ -338,12 +387,19 @@
         }
 
         const groups = groupMatches(matches);
-        timeline.innerHTML = Object.entries(groups).map(([, items]) => `
+        timeline.innerHTML = Object.entries(groups).map(([, group]) => {
+            const items = group.items || group; // compat
+            const roundLabel = group.round || "";
+            const roundBadge = roundLabel
+                ? `<span class="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold ${roundBadgeClass(roundLabel)}">${escapeHtml(roundLabel)}</span>`
+                : "";
+            return `
             <section class="space-y-3">
                 <div class="sticky top-[4.5rem] z-10 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
                     <div class="flex items-center justify-between gap-3">
-                        <div>
+                        <div class="flex flex-wrap items-center gap-2">
                             <div class="text-sm font-black text-slate-900">${escapeHtml(formatDateLabel(items[0]?.start_time))}</div>
+                            ${roundBadge}
                             <div class="text-xs text-slate-400">${items.length} trận</div>
                         </div>
                         <div class="text-xs font-semibold text-slate-500">${escapeHtml(statusLabel(statusValue(items[0])))}</div>
@@ -353,7 +409,8 @@
                     ${items.map(renderScoreboardCard).join("")}
                 </div>
             </section>
-        `).join("");
+        `;
+        }).join("");
     }
 
     function renderUpdatedTime() {

@@ -406,6 +406,7 @@ async def create_match(
             away_team=payload.away_team.strip(),
             away_icon=(payload.away_icon or "").strip() or None,
             handicap=payload.handicap,
+            round=(payload.round or "").strip() or None,
             status=payload.status,
             start_time=payload.start_time,
             end_time=end_time,
@@ -443,6 +444,7 @@ async def update_match(
         match.away_team = payload.away_team.strip()
         match.away_icon = (payload.away_icon or "").strip() or None
         match.handicap = payload.handicap
+        match.round = (payload.round or "").strip() or None
         match.status = payload.status
         match.start_time = payload.start_time
         match.end_time = end_time

@@ -1280,6 +1280,7 @@ def _match_response(match: Match):
         "penalty_score": _match_penalty_score(match),
         "display_score": _match_display_score(match),
         "handicap": match.handicap,
+        "round": getattr(match, "round", None),
         "status": match.status,
         "start_time": _serialize_app_datetime(match.start_time),
         "end_time": _serialize_app_datetime(_match_effective_end_time(match)) if match.start_time else None,

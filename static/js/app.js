@@ -319,35 +319,51 @@ async function fetchUpcomingMatches() {
             return;
         }
 
-        // Group theo ngày
+        // Group theo vòng đấu + ngày
         const grouped = {};
         matches.forEach(m => {
             const parts = getVNDateParts(m.start_time);
-            const key = parts ? `${parts.year}-${parts.month}-${parts.day}` : "unknown";
-            (grouped[key] = grouped[key] || []).push(m);
+            const dateKey = parts ? `${parts.year}-${parts.month}-${parts.day}` : "unknown";
+            const roundKey = m.round || "";
+            const key = roundKey ? `${roundKey}||${dateKey}` : dateKey;
+            if (!grouped[key]) grouped[key] = { round: roundKey, date: dateKey, items: [], dateKey };
+            grouped[key].items.push(m);
         });
 
-        const sortedDates = Object.keys(grouped).sort();
+        const sortedKeys = Object.keys(grouped).sort((a, b) => {
+            const dA = grouped[a].dateKey;
+            const dB = grouped[b].dateKey;
+            return dA < dB ? -1 : dA > dB ? 1 : 0;
+        });
         const nextExpandedGroups = new Set();
         let html = "";
 
-        sortedDates.forEach((dateKey, idx) => {
-            const dateMatches = grouped[dateKey];
-            const displayDate = dateKey.split("-").reverse().join("/");
-            const expanded = expandedMatchGroups.size ? expandedMatchGroups.has(dateKey) : idx === 0;
-            if (expanded) nextExpandedGroups.add(dateKey);
+        sortedKeys.forEach((groupKey, idx) => {
+            const group = grouped[groupKey];
+            const dateMatches = group.items;
+            const displayDate = group.dateKey.split("-").reverse().join("/");
+            const expanded = expandedMatchGroups.size ? expandedMatchGroups.has(groupKey) : idx === 0;
+            if (expanded) nextExpandedGroups.add(groupKey);
+
+            const roundBadge = group.round
+                ? `<span class="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold ${roundBadgeClass(group.round)}">${escapeHtml(group.round)}</span>`
+                : "";
 
             const matchesHtml = dateMatches.map(m => renderMatchCard(m)).join("");
 
             html += `
                 <div class="mb-4">
-                    <button onclick="toggleGroup('${dateKey}')" class="w-full flex justify-between items-center bg-white p-3 rounded-lg border border-slate-200 focus:outline-none mb-2 active:bg-sky-50 shadow-sm">
-                        <span class="font-bold text-sky-700 text-sm">📅 Ngày ${displayDate} <span class="text-slate-500 text-xs font-normal">(${dateMatches.length} trận)</span></span>
-                        <svg id="icon-${dateKey}" class="w-5 h-5 text-slate-400 transform transition-transform duration-200 ${expanded ? "rotate-180" : ""}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <button onclick="toggleGroup('${groupKey}')" class="w-full flex flex-wrap items-center justify-between gap-2 bg-white px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none mb-3 shadow-sm">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="text-sm font-black text-slate-900">📅 ${displayDate}</span>
+                            ${roundBadge}
+                            <span class="text-xs text-slate-400">${dateMatches.length} trận</span>
+                        </div>
+                        <svg id="icon-${groupKey}" class="w-5 h-5 text-slate-400 transform transition-transform duration-200 ${expanded ? "rotate-180" : ""}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                         </svg>
                     </button>
-                    <div id="content-${dateKey}" class="${expanded ? "" : "hidden"}">
+                    <div id="content-${groupKey}" class="${expanded ? "space-y-3" : "hidden space-y-3"}">
                         ${matchesHtml}
                     </div>
                 </div>`;
@@ -587,16 +603,16 @@ function summaryTile(label, value, valueClass) {
         </div>`;
 }
 
-window.toggleGroup = function(dateKey) {
-    const content = document.getElementById(`content-${dateKey}`);
-    const icon = document.getElementById(`icon-${dateKey}`);
+window.toggleGroup = function(groupKey) {
+    const content = document.getElementById(`content-${groupKey}`);
+    const icon = document.getElementById(`icon-${groupKey}`);
     if (!content) return;
     const isHidden = content.classList.toggle("hidden");
     icon?.classList.toggle("rotate-180");
     if (isHidden) {
-        expandedMatchGroups.delete(dateKey);
+        expandedMatchGroups.delete(groupKey);
     } else {
-        expandedMatchGroups.add(dateKey);
+        expandedMatchGroups.add(groupKey);
     }
 };
 
@@ -805,28 +821,70 @@ function normalizeStakeValue(rawVal, minStake, maxStake) {
     return Math.max(effectiveMin, Math.min(parsed, maxStake));
 }
 
+// ─── Round badge helpers (mirrors match.js) ───────────────────────────────────
+function roundBadgeClass(round) {
+    const r = String(round || "");
+    if (r === "Chung kết") return "border-amber-300 bg-amber-50 text-amber-800";
+    if (r === "Bán kết") return "border-violet-200 bg-violet-50 text-violet-800";
+    if (r === "Tứ kết") return "border-sky-200 bg-sky-50 text-sky-800";
+    if (r === "Tranh hạng 3") return "border-orange-200 bg-orange-50 text-orange-800";
+    if (r === "Vòng 1/16") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+    if (r === "Vòng 1/32") return "border-teal-200 bg-teal-50 text-teal-800";
+    return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function isTeamTbd(name) {
+    return !name || String(name).trim().toUpperCase() === "TBD" || String(name).trim().startsWith("W");
+}
+
+function renderTeamIcon(icon, name, className = "h-12 w-16 sm:h-14 sm:w-20") {
+    const isTbd = isTeamTbd(name);
+    if (isTbd) {
+        return `<span class="${className} inline-flex items-center justify-center rounded-none border-2 border-dashed border-slate-300 bg-slate-100 text-sm font-black text-slate-400">?</span>`;
+    }
+    const src = safeImageSrc(icon);
+    if (src) {
+        return `<img src="${src}" class="${className} rounded-none border border-slate-200 bg-white object-contain shadow-sm" alt="">`;
+    }
+    return `<span class="${className} inline-flex items-center justify-center rounded-none border border-slate-200 bg-slate-100 text-sm font-black text-slate-500">${escapeHtml(String(name || "?").slice(0, 1).toUpperCase())}</span>`;
+}
+
 function renderMatchCard(match) {
-    const timeStr = formatVNTime(match.start_time);
-    const { id, home_team, home_icon, away_team, away_icon, handicap, stakes_home, stakes_draw, stakes_away, total_pool } = match;
+    const { id, home_team, home_icon, away_team, away_icon, handicap, stakes_home, stakes_draw, stakes_away, total_pool, round } = match;
     const status = String(match.status || "upcoming");
     const isLive = isLiveMatch(match);
     const canBet = status === "upcoming";
-    const endTimeStr = match.end_time ? formatVNTime(match.end_time) : "-";
-    const homeTeam = escapeHtml(home_team);
-    const awayTeam = escapeHtml(away_team);
-    const homeIconSrc = safeImageSrc(home_icon);
-    const awayIconSrc = safeImageSrc(away_icon);
     const minStake = match.min_stake;
     const minStakeHint = minStake ? `Tối thiểu ${formatCoins(minStake)}` : "Mở bát tự do";
+    const timeStr = formatVNTime(match.start_time);
+    const endTimeStr = match.end_time ? formatVNTime(match.end_time) : "-";
+
+    const homeTbd = isTeamTbd(home_team);
+    const awayTbd = isTeamTbd(away_team);
+    const homeDisplayName = homeTbd ? "TBD" : (home_team || "?");
+    const awayDisplayName = awayTbd ? "TBD" : (away_team || "?");
 
     const hcSign = handicap > 0 ? "+" : "";
-    const hcClass = handicap >= 0 ? "handicap-pos" : "handicap-neg";
-    const hcBadge = handicap !== 0 ? `<span class="${hcClass}">(${hcSign}${handicap})</span>` : "";
-    // Kèo chấp lẻ (0.5, 1.5, ...) không có kết quả hòa
     const isOddHandicap = handicap % 1 !== 0;
 
+    // Round badge
+    const roundBadgeHtml = round
+        ? `<span class="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold ${roundBadgeClass(round)}">${escapeHtml(round)}</span>`
+        : "";
+
+    // Live badge
+    const liveBadge = isLive
+        ? `<span class="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-600"><span class="h-2 w-2 rounded-full bg-rose-500 animate-pulse"></span>LIVE</span>`
+        : "";
+
+    // Status badge
+    const statusBadge = isLive
+        ? `<span class="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700">Đang đá</span>`
+        : `<span class="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-700">Sắp diễn ra</span>`;
+
+    // Bet area
     const betArea = placedBets.has(id)
-        ? `<div class="bet-placed-badge">Đã đặt cược cho trận này</div>`
+        ? `<div class="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-center text-sm font-semibold text-emerald-700">✅ Đã đặt cược trận này</div>`
         : canBet
         ? `
             <div class="bet-btn-group" id="btn-group-${id}">
@@ -871,53 +929,48 @@ function renderMatchCard(match) {
             <div class="mt-2 text-center text-[11px] text-slate-500">${escapeHtml(minStakeHint)}</div>
             <div id="stake-panel-${id}" class="hidden"></div>`;
 
-    const teamLogoClass = "h-8 w-12 rounded-none border border-slate-200 bg-white object-contain shadow-sm md:h-12 md:w-16 lg:h-14 lg:w-20";
-    const homeIconHtml = homeIconSrc ? `<img src="${homeIconSrc}" class="${teamLogoClass}" alt="">` : "";
-    const awayIconHtml = awayIconSrc ? `<img src="${awayIconSrc}" class="${teamLogoClass}" alt="">` : "";
-    const liveBadge = isLive ? `
-        <span class="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-600">
-            <span class="h-2 w-2 rounded-full bg-rose-500 animate-pulse"></span>
-            LIVE
-        </span>` : "";
-
     return `
-        <div class="bg-white border border-slate-200 hover:border-sky-300 rounded-xl p-4 shadow-sm transition duration-200 mb-3 last:mb-0">
-            <div class="flex items-center justify-between mb-2">
-                <div class="flex items-center gap-2">
+        <article class="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition hover:border-sky-200 sm:px-6">
+            <!-- Header row: badges + detail btn -->
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div class="flex flex-wrap items-center gap-2">
+                    ${statusBadge}
                     ${liveBadge}
-                    <span class="text-xs bg-sky-50 text-sky-700 font-mono font-semibold px-2 py-1 rounded border border-sky-100">⏰ ${timeStr} - ${endTimeStr}</span>
+                    ${roundBadgeHtml}
                 </div>
-                <button type="button"
-                    class="inline-flex items-center gap-1 text-xs bg-white text-slate-600 border border-slate-200 hover:border-sky-300 hover:text-sky-700 px-2.5 py-1 rounded-full transition-colors shadow-sm"
-                    onclick="openMatchDetail(${id})"
-                    title="Xem chi tiết trận">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M11 16h2M12 8v4m0 8a8 8 0 100-16 8 8 0 000 16z"/>
-                    </svg>
-                    <span>Chi tiết</span>
-                </button>
-            </div>
-
-            <div class="flex items-center justify-between my-3 px-2">
-                <div class="w-2/5 text-center flex flex-col items-center">
-                    <div class="flex items-center justify-center mb-2 md:mb-3">${homeIconHtml}</div>
-                    <p class="text-sm font-bold text-slate-900 truncate w-full">${homeTeam} ${hcBadge}</p>
-                    <span class="text-xs text-slate-500 block mt-0.5">Chủ nhà</span>
-                </div>
-                <div class="w-1/5 text-center text-slate-400 font-black text-sm">VS</div>
-                <div class="w-2/5 text-center flex flex-col items-center">
-                    <div class="flex items-center justify-center mb-2 md:mb-3">${awayIconHtml}</div>
-                    <p class="text-sm font-bold text-slate-900 truncate w-full">${awayTeam}</p>
-                    <span class="text-xs text-slate-500 block mt-0.5">Khách</span>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-mono font-semibold text-slate-500 bg-slate-50 border border-slate-200 px-2 py-1 rounded-full">⏰ ${timeStr}–${endTimeStr}</span>
+                    <button type="button"
+                        class="inline-flex items-center gap-1 text-xs bg-white text-slate-600 border border-slate-200 hover:border-sky-300 hover:text-sky-700 px-2.5 py-1 rounded-full transition-colors shadow-sm"
+                        onclick="openMatchDetail(${id})"
+                        title="Xem chi tiết">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 16h2M12 8v4m0 8a8 8 0 100-16 8 8 0 000 16z"/></svg>
+                        Chi tiết
+                    </button>
                 </div>
             </div>
 
-            <div class="text-center text-xs text-slate-500 mb-1">
-                Pool: <span class="text-[#D3af37] font-semibold">${formatCoins(total_pool)}</span>
+            <!-- Scoreboard: home | VS | away -->
+            <div class="grid grid-cols-[minmax(0,1fr)_minmax(96px,auto)_minmax(0,1fr)] items-start gap-3 sm:gap-6 my-3">
+                <div class="min-w-0 text-center">
+                    <div class="mb-2 flex justify-center">${renderTeamIcon(home_icon, homeTbd ? null : home_team)}</div>
+                    <div class="truncate text-sm font-bold ${homeTbd ? "text-slate-400 italic" : "text-slate-900"}">${escapeHtml(homeDisplayName)}</div>
+                    <div class="text-[11px] text-slate-400 mt-0.5">Chủ nhà${handicap !== 0 ? ` <span class="${handicap > 0 ? 'text-emerald-600' : 'text-rose-600'} font-semibold">(${hcSign}${handicap})</span>` : ""}</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-light text-slate-400 sm:text-4xl">VS</div>
+                    <div class="mt-1 text-xs font-semibold text-slate-500">Pool: <span class="text-amber-600">${formatCoins(total_pool)}</span></div>
+                </div>
+                <div class="min-w-0 text-center">
+                    <div class="mb-2 flex justify-center">${renderTeamIcon(away_icon, awayTbd ? null : away_team)}</div>
+                    <div class="truncate text-sm font-bold ${awayTbd ? "text-slate-400 italic" : "text-slate-900"}">${escapeHtml(awayDisplayName)}</div>
+                    <div class="text-[11px] text-slate-400 mt-0.5">Khách</div>
+                </div>
             </div>
 
+            <!-- Bet area -->
             ${betArea}
-        </div>`;
+        </article>`;
 }
 
 window.selectChoice = function(matchId, choice, totalPool, stakesOnChoice, matchStatus = "upcoming", minStake = null) {

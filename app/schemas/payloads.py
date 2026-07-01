@@ -32,6 +32,7 @@ class MatchPayload(BaseModel):
     home_icon: Optional[str] = Field(default=None, max_length=500)
     away_icon: Optional[str] = Field(default=None, max_length=500)
     handicap: float = 0.0
+    round: Optional[str] = Field(default=None, max_length=80)
     status: MatchStatus = MatchStatus.upcoming
     start_time: datetime
     end_time: Optional[datetime] = None

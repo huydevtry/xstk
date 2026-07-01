@@ -114,6 +114,7 @@ class Match(Base):
     home_penalty_score = Column(Integer, nullable=True)
     away_penalty_score = Column(Integer, nullable=True)
     handicap = Column(Float, default=0.0)
+    round = Column(String, nullable=True)
     status = Column(Enum(MatchStatus), default=MatchStatus.upcoming, nullable=False)
     start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime, nullable=True)
