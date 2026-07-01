@@ -47,6 +47,18 @@
         return { HOME: "Chủ nhà", DRAW: "Hòa", AWAY: "Khách" }[choice] || choice || "Không rõ";
     }
 
+    function formatMatchScore(match) {
+        const homeScore = Number(match.home_score || 0);
+        const awayScore = Number(match.away_score || 0);
+        const hasPenalty = match.home_penalty_score !== null
+            && match.home_penalty_score !== undefined
+            && match.away_penalty_score !== null
+            && match.away_penalty_score !== undefined;
+        return hasPenalty
+            ? `${homeScore} (${Number(match.home_penalty_score)}) - ${awayScore} (${Number(match.away_penalty_score)})`
+            : `${homeScore} - ${awayScore}`;
+    }
+
     function renderBettorAvatar(bettor, className = "w-7 h-7") {
         const avatarSrc = safeImageSrc(bettor.avatar_url);
         if (avatarSrc) {
@@ -188,12 +200,14 @@
             { key: "AWAY", stake: Number(pool.away_stakes || 0), count: Number(pool.away_count || 0), bettors: bettors.AWAY || [] },
         ];
 
+        const roundPrefix = match.round_label ? `${match.round_label} | ` : "";
+        const scoreText = settlement.score || formatMatchScore(match);
         titleEl.textContent = `${match.home_team} vs ${match.away_team}`;
         subtitleEl.textContent = resultPublished
-            ? `Kèo chấp ${match.handicap ?? 0} | Tỷ số ${settlement.score || `${match.home_score ?? 0}-${match.away_score ?? 0}`} | Sau kèo ${settlement.adjusted_score || "--"}`
+            ? `${roundPrefix}Kèo chấp ${match.handicap ?? 0} | Tỷ số ${scoreText} | Sau kèo ${settlement.adjusted_score || "--"}`
             : settlement.is_finished
-            ? `Kèo chấp ${match.handicap ?? 0} | Kết thúc ${formatVNDateTime(match.end_time)} | Chờ kết quả`
-            : `Kèo chấp ${match.handicap ?? 0} | Bắt đầu ${formatVNDateTime(match.start_time)} | Kết thúc ${formatVNDateTime(match.end_time)} | Trạng thái ${match.status}`;
+            ? `${roundPrefix}Kèo chấp ${match.handicap ?? 0} | Kết thúc ${formatVNDateTime(match.end_time)} | Chờ kết quả`
+            : `${roundPrefix}Kèo chấp ${match.handicap ?? 0} | Bắt đầu ${formatVNDateTime(match.start_time)} | Kết thúc ${formatVNDateTime(match.end_time)} | Trạng thái ${match.status}`;
         quoteEl.textContent = settlement.headline_quote || "Dữ liệu trận đã sẵn sàng. Hãy xem kỹ bảng chia cửa bên dưới.";
 
         const homePct = totalPool > 0 ? (choiceStats[0].stake / totalPool) * 100 : 0;
@@ -212,7 +226,7 @@
 
             ${resultPublished ? `
                 <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    ${summaryTile("Kết quả", settlement.score || `${match.home_score ?? 0}-${match.away_score ?? 0}`, "text-[#D3af37]")}
+                    ${summaryTile("Kết quả", scoreText, "text-[#D3af37]")}
                     ${summaryTile("Sau kèo", settlement.adjusted_score || "--", "text-[#D3af37]")}
                     ${summaryTile("Người thắng", String(Number(settlement.winner_count || 0)), "text-[#D3af37]")}
                     ${summaryTile(settlement.refunded ? "Hoàn điểm" : "Cửa thắng", settlement.refunded ? String(Number(settlement.refund_count || 0)) : choiceLabel(settlement.winning_choice), "text-[#D3af37]")}

@@ -986,6 +986,17 @@ function renderMatches() {
     `).join("");
 }
 
+function formatMatchScore(match) {
+    const homeScore = Number(match.home_score || 0);
+    const awayScore = Number(match.away_score || 0);
+    const homePenalty = match.home_penalty_score;
+    const awayPenalty = match.away_penalty_score;
+    const hasPenalty = homePenalty !== null && homePenalty !== undefined && awayPenalty !== null && awayPenalty !== undefined;
+    return hasPenalty
+        ? `${homeScore} (${Number(homePenalty)}) - ${awayScore} (${Number(awayPenalty)})`
+        : `${homeScore} - ${awayScore}`;
+}
+
 function renderMatchCard(match) {
     const status = normalizeMatchStatus(match.status);
     const canEdit = status !== "finished";
@@ -1002,6 +1013,7 @@ function renderMatchCard(match) {
                     <div class="flex flex-wrap items-center gap-2">
                         <span class="rounded-full border border-slate-700 bg-slate-950/70 px-2.5 py-1 text-[11px] font-semibold text-slate-300">#${Number(match.id)}</span>
                         <span class="rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass}">${escapeHtml(status)}</span>
+                        ${match.round_label ? `<span class="rounded-full border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-xs font-semibold text-violet-200">${escapeHtml(match.round_label)}</span>` : ""}
                         ${match.result_published ? `<span class="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-200">Đã giải</span>` : ""}
                     </div>
                     <h3 class="mt-3 text-base font-black text-white sm:text-lg">
@@ -1011,7 +1023,7 @@ function renderMatchCard(match) {
                         <div>Giờ bắt đầu: <span class="font-semibold text-white">${escapeHtml(formatDateTime(match.start_time))}</span></div>
                         <div>Giờ kết thúc: <span class="font-semibold text-white">${escapeHtml(formatDateTime(match.end_time))}</span></div>
                         <div>Kèo: <span class="font-semibold text-white">${Number(match.handicap || 0)}</span></div>
-                        <div>Tỷ số: <span class="font-semibold text-white">${Number(match.home_score || 0)} - ${Number(match.away_score || 0)}</span></div>
+                        <div>Tỷ số: <span class="font-semibold text-white">${escapeHtml(formatMatchScore(match))}</span></div>
                     </div>
                 </div>
                 <div class="flex flex-wrap gap-2 lg:max-w-sm lg:justify-end">
@@ -1030,9 +1042,13 @@ function renderMatchCard(match) {
 function resolveForm(match) {
     return `
         <form class="flex flex-wrap items-center gap-2" onsubmit="return resolveMatch(event, ${match.id})">
-            <input class="w-20 rounded-2xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" type="number" min="0" step="1" value="${Number(match.home_score || 0)}" aria-label="Tỷ số đội nhà">
+            <input class="resolve-home-score w-20 rounded-2xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" type="number" min="0" step="1" value="${Number(match.home_score || 0)}" aria-label="Tỷ số đội nhà">
             <span class="text-slate-500">-</span>
-            <input class="w-20 rounded-2xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" type="number" min="0" step="1" value="${Number(match.away_score || 0)}" aria-label="Tỷ số đội khách">
+            <input class="resolve-away-score w-20 rounded-2xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" type="number" min="0" step="1" value="${Number(match.away_score || 0)}" aria-label="Tỷ số đội khách">
+            <span class="text-xs font-semibold uppercase tracking-wide text-slate-500">Pen</span>
+            <input class="resolve-home-penalty w-16 rounded-2xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" type="number" min="0" step="1" placeholder="Nhà" value="${match.home_penalty_score ?? ""}" aria-label="Luân lưu đội nhà">
+            <span class="text-slate-500">-</span>
+            <input class="resolve-away-penalty w-16 rounded-2xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" type="number" min="0" step="1" placeholder="Khách" value="${match.away_penalty_score ?? ""}" aria-label="Luân lưu đội khách">
             <button type="submit" class="rounded-2xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">Giải trận</button>
         </form>
     `;
@@ -1053,6 +1069,16 @@ function apiDateTimeValue(value) {
     return value ? value.replace("T", " ") + ":00" : "";
 }
 
+function setRoundLabelValue(value) {
+    const select = document.getElementById("round-label");
+    if (!select) return;
+    const label = String(value || "").trim();
+    if (label && ![...select.options].some(option => option.value === label)) {
+        select.add(new Option(label, label));
+    }
+    select.value = label;
+}
+
 function readMatchPayload() {
     const startDate = document.getElementById("start-date").value;
     const startTime = document.getElementById("start-time").value;
@@ -1064,6 +1090,7 @@ function readMatchPayload() {
         home_icon: homeCountryCode ? buildFlagUrl(homeCountryCode) : null,
         away_icon: awayCountryCode ? buildFlagUrl(awayCountryCode) : null,
         handicap: Number(document.getElementById("handicap").value || 0),
+        round_label: document.getElementById("round-label").value.trim() || null,
         status: document.getElementById("status").value,
         start_time: apiDateTimeValueFromParts(startDate, startTime),
         end_time: apiDateTimeValue(document.getElementById("end-time").value),
@@ -1117,6 +1144,7 @@ function editMatch(matchId) {
     updateFlagPreview("home-flag-preview", document.getElementById("home-country-code").value);
     updateFlagPreview("away-flag-preview", document.getElementById("away-country-code").value);
     document.getElementById("handicap").value = Number(match.handicap || 0);
+    setRoundLabelValue(match.round_label || "");
     document.getElementById("status").value = normalizeMatchStatus(match.status) === "live" ? "live" : "upcoming";
     document.getElementById("start-date").value = localDateValue(match.start_time);
     document.getElementById("start-time").value = localTimeValue(match.start_time);
@@ -1132,6 +1160,7 @@ function resetMatchForm() {
     document.getElementById("match-form")?.reset();
     document.getElementById("match-id").value = "";
     document.getElementById("handicap").value = "0";
+    setRoundLabelValue("");
     document.getElementById("status").value = "upcoming";
     document.getElementById("home-country-code").value = "";
     document.getElementById("away-country-code").value = "";
@@ -1172,20 +1201,42 @@ async function resetMatchPool(matchId) {
 async function resolveMatch(event, matchId) {
     event.preventDefault();
     const form = event.currentTarget;
-    const inputs = form.querySelectorAll("input");
-    const homeScore = Number(inputs[0].value);
-    const awayScore = Number(inputs[1].value);
+    const homeScore = Number(form.querySelector(".resolve-home-score")?.value);
+    const awayScore = Number(form.querySelector(".resolve-away-score")?.value);
+    const homePenaltyInput = form.querySelector(".resolve-home-penalty");
+    const awayPenaltyInput = form.querySelector(".resolve-away-penalty");
+    const homePenaltyRaw = homePenaltyInput?.value.trim() || "";
+    const awayPenaltyRaw = awayPenaltyInput?.value.trim() || "";
+    const hasHomePenalty = homePenaltyRaw !== "";
+    const hasAwayPenalty = awayPenaltyRaw !== "";
     if (!Number.isInteger(homeScore) || homeScore < 0 || !Number.isInteger(awayScore) || awayScore < 0) {
         showToast("Tỷ số phải là số nguyên không âm.", "error");
         return false;
     }
-    if (!window.confirm(`Giải trận #${matchId} với tỷ số ${homeScore} - ${awayScore}?`)) return false;
+    if (hasHomePenalty !== hasAwayPenalty) {
+        showToast("Vui lòng nhập đủ tỷ số luân lưu cho cả hai đội.", "error");
+        return false;
+    }
+    const payload = { home_score: homeScore, away_score: awayScore };
+    let scoreText = `${homeScore} - ${awayScore}`;
+    if (hasHomePenalty && hasAwayPenalty) {
+        const homePenalty = Number(homePenaltyRaw);
+        const awayPenalty = Number(awayPenaltyRaw);
+        if (!Number.isInteger(homePenalty) || homePenalty < 0 || !Number.isInteger(awayPenalty) || awayPenalty < 0) {
+            showToast("Tỷ số luân lưu phải là số nguyên không âm.", "error");
+            return false;
+        }
+        payload.home_penalty_score = homePenalty;
+        payload.away_penalty_score = awayPenalty;
+        scoreText = `${homeScore} (${homePenalty}) - ${awayScore} (${awayPenalty})`;
+    }
+    if (!window.confirm(`Giải trận #${matchId} với tỷ số ${scoreText}?`)) return false;
 
     try {
         const data = await fetchJson(`/api/v1/admin/resolve-match/${matchId}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ home_score: homeScore, away_score: awayScore }),
+            body: JSON.stringify(payload),
         });
         await Promise.all([fetchMatches(), fetchOverview(), fetchUsers(state.userSearch)]);
         showToast(data.message || "Đã giải trận.", "success");

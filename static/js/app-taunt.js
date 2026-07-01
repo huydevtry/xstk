@@ -456,6 +456,10 @@
 
     function renderStatusPill(match, timeStr, endTimeStr) {
         const status = String(match.status || "upcoming").toLowerCase();
+        const roundLabel = String(match.round_label || "").trim();
+        const roundBadge = roundLabel
+            ? `<span class="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-blue-600">${escapeHtml(roundLabel)}</span>`
+            : "";
         if (status === "live") {
             return `
                 <span class="inline-flex items-center gap-2 rounded-full border border-red-100 bg-red-50 px-3 py-1.5 text-xs font-black tracking-wide text-red-600 shadow-sm">
@@ -465,6 +469,7 @@
                     </span>
                     LIVE
                 </span>
+                ${roundBadge}
             `;
         }
         if (status === "finished") {
@@ -473,6 +478,7 @@
                     <span>FT</span>
                     <span>Đã kết thúc</span>
                 </span>
+                ${roundBadge}
             `;
         }
         return `
@@ -481,13 +487,24 @@
                 <span class="text-slate-300">→</span>
                 <span>${endTimeStr}</span>
             </span>
+            ${roundBadge}
         `;
+    }
+
+    function hasPenaltyScore(match) {
+        return match.home_penalty_score !== null
+            && match.home_penalty_score !== undefined
+            && match.away_penalty_score !== null
+            && match.away_penalty_score !== undefined;
     }
 
     function renderCenterMatchState(match, handicapText) {
         const status = String(match.status || "upcoming").toLowerCase();
         const homeScore = Number(match.home_score || 0);
         const awayScore = Number(match.away_score || 0);
+        const showPenalty = hasPenaltyScore(match);
+        const homePenalty = Number(match.home_penalty_score || 0);
+        const awayPenalty = Number(match.away_penalty_score || 0);
         const handicapBadge = `
             <div class="inline-flex max-w-full items-center gap-1 rounded-full border ${status === "upcoming" ? "border-slate-200 bg-slate-50 text-slate-600" : "border-blue-200 bg-blue-50 text-blue-600"} px-2.5 py-1 text-[10px] font-bold">
                 <span>${handicapText}</span>
@@ -506,9 +523,15 @@
         return `
             <div class="flex flex-col items-center justify-center">
                 <div class="mb-2 flex items-center justify-center gap-2">
-                    <span class="text-3xl font-black ${status === "finished" ? "text-slate-500" : "text-slate-800"} sm:text-4xl">${homeScore}</span>
+                    <span class="inline-flex items-baseline gap-1">
+                        <span class="text-3xl font-black ${status === "finished" ? "text-slate-500" : "text-slate-800"} sm:text-4xl">${homeScore}</span>
+                        ${showPenalty ? `<span class="text-sm font-black text-red-500 sm:text-base">(${homePenalty})</span>` : ""}
+                    </span>
                     <span class="text-xl font-light text-slate-300">-</span>
-                    <span class="text-3xl font-black ${status === "finished" ? "text-slate-700" : "text-slate-800"} sm:text-4xl">${awayScore}</span>
+                    <span class="inline-flex items-baseline gap-1">
+                        <span class="text-3xl font-black ${status === "finished" ? "text-slate-700" : "text-slate-800"} sm:text-4xl">${awayScore}</span>
+                        ${showPenalty ? `<span class="text-sm font-black text-red-500 sm:text-base">(${awayPenalty})</span>` : ""}
+                    </span>
                 </div>
                 ${handicapBadge}
             </div>

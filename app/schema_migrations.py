@@ -91,6 +91,15 @@ async def ensure_sqlite_schema() -> None:
                 "UPDATE push_subscriptions SET updated_at = created_at WHERE updated_at IS NULL"
             ))
 
+        result = await conn.execute(text("PRAGMA table_info(matches)"))
+        existing_match_columns = {row[1] for row in result.fetchall()}
+        if "round_label" not in existing_match_columns:
+            await conn.execute(text("ALTER TABLE matches ADD COLUMN round_label VARCHAR"))
+        if "home_penalty_score" not in existing_match_columns:
+            await conn.execute(text("ALTER TABLE matches ADD COLUMN home_penalty_score INTEGER"))
+        if "away_penalty_score" not in existing_match_columns:
+            await conn.execute(text("ALTER TABLE matches ADD COLUMN away_penalty_score INTEGER"))
+
         index_statements = [
             "CREATE INDEX IF NOT EXISTS ix_bets_user_created ON bets(user_id, created_at DESC)",
             "CREATE INDEX IF NOT EXISTS ix_bets_match_created ON bets(match_id, created_at DESC)",

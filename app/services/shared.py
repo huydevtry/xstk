@@ -1210,6 +1210,14 @@ def _normalize_external_media_payload(media_url: Optional[str], media_provider: 
 def _match_result_published(match: Match) -> bool:
     return match.status == MatchStatus.finished and bool(getattr(match, "resolved_at", None))
 
+def _match_display_score(match: Match) -> str:
+    if (
+        getattr(match, "home_penalty_score", None) is not None
+        and getattr(match, "away_penalty_score", None) is not None
+    ):
+        return f"{match.home_score} ({match.home_penalty_score}) - {match.away_score} ({match.away_penalty_score})"
+    return f"{match.home_score} - {match.away_score}"
+
 def _match_response(match: Match):
     return {
         "id": match.id,
@@ -1219,7 +1227,10 @@ def _match_response(match: Match):
         "away_icon": match.away_icon,
         "home_score": match.home_score,
         "away_score": match.away_score,
+        "home_penalty_score": getattr(match, "home_penalty_score", None),
+        "away_penalty_score": getattr(match, "away_penalty_score", None),
         "handicap": match.handicap,
+        "round_label": getattr(match, "round_label", None),
         "status": match.status,
         "start_time": _serialize_app_datetime(match.start_time),
         "end_time": _serialize_app_datetime(_match_effective_end_time(match)) if match.start_time else None,
@@ -1410,7 +1421,10 @@ def _serialize_bet_history_entry(
         "match_status": match.status,
         "home_score": match.home_score,
         "away_score": match.away_score,
+        "home_penalty_score": getattr(match, "home_penalty_score", None),
+        "away_penalty_score": getattr(match, "away_penalty_score", None),
         "handicap": match.handicap,
+        "round_label": getattr(match, "round_label", None),
         "start_time": _serialize_app_datetime(match.start_time),
         "choice": bet.choice,
         "stake": bet.stake,
@@ -1853,7 +1867,7 @@ async def _build_match_detail_payload(
         "adjusted_home_score": adjusted_home if result_published else None,
         "adjusted_away_score": adjusted_away if result_published else None,
         "adjusted_score": f"{adjusted_home}-{adjusted_away}" if result_published else None,
-        "score": f"{match.home_score}-{match.away_score}" if result_published else None,
+        "score": _match_display_score(match) if result_published else None,
         "refunded": refunded,
         "winner_count": 0,
         "loser_count": 0,

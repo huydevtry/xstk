@@ -398,6 +398,7 @@ async def create_match(
     end_time = payload.end_time or (payload.start_time + MATCH_DEFAULT_DURATION)
     if end_time <= payload.start_time:
         raise HTTPException(status_code=400, detail="Giờ kết thúc phải sau giờ bắt đầu.")
+    round_label = (payload.round_label or "").strip() or None
 
     try:
         match = Match(
@@ -406,6 +407,7 @@ async def create_match(
             away_team=payload.away_team.strip(),
             away_icon=(payload.away_icon or "").strip() or None,
             handicap=payload.handicap,
+            round_label=round_label,
             status=payload.status,
             start_time=payload.start_time,
             end_time=end_time,
@@ -436,6 +438,7 @@ async def update_match(
     end_time = payload.end_time or (payload.start_time + MATCH_DEFAULT_DURATION)
     if end_time <= payload.start_time:
         raise HTTPException(status_code=400, detail="Giờ kết thúc phải sau giờ bắt đầu.")
+    round_label = (payload.round_label or "").strip() or None
 
     try:
         match.home_team = payload.home_team.strip()
@@ -443,6 +446,7 @@ async def update_match(
         match.away_team = payload.away_team.strip()
         match.away_icon = (payload.away_icon or "").strip() or None
         match.handicap = payload.handicap
+        match.round_label = round_label
         match.status = payload.status
         match.start_time = payload.start_time
         match.end_time = end_time
@@ -577,11 +581,17 @@ async def resolve_match(
         raise HTTPException(status_code=400, detail="Trận chưa kết thúc, chưa thể giải.")
     if match.resolved_at is not None:
         raise HTTPException(status_code=400, detail="Trận đã được giải trước đó.")
+    has_home_penalty = payload.home_penalty_score is not None
+    has_away_penalty = payload.away_penalty_score is not None
+    if has_home_penalty != has_away_penalty:
+        raise HTTPException(status_code=400, detail="Vui lòng nhập đủ tỷ số luân lưu cho cả hai đội.")
 
     try:
         # Lưu score
         match.home_score = payload.home_score
         match.away_score = payload.away_score
+        match.home_penalty_score = payload.home_penalty_score
+        match.away_penalty_score = payload.away_penalty_score
 
         # Tính adjusted score với handicap
         adjusted_home = payload.home_score + match.handicap

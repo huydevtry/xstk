@@ -23,6 +23,8 @@ class UpdateBetPayload(BaseModel):
 class ResolvePayload(BaseModel):
     home_score: int = Field(..., ge=0)
     away_score: int = Field(..., ge=0)
+    home_penalty_score: Optional[int] = Field(default=None, ge=0)
+    away_penalty_score: Optional[int] = Field(default=None, ge=0)
 
 class MatchPayload(BaseModel):
     home_team: str = Field(..., min_length=1, max_length=80)
@@ -30,6 +32,7 @@ class MatchPayload(BaseModel):
     home_icon: Optional[str] = Field(default=None, max_length=500)
     away_icon: Optional[str] = Field(default=None, max_length=500)
     handicap: float = 0.0
+    round_label: Optional[str] = Field(default=None, max_length=80)
     status: MatchStatus = MatchStatus.upcoming
     start_time: datetime
     end_time: Optional[datetime] = None
